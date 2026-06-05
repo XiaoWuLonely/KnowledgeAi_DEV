@@ -97,7 +97,9 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = [".pdf", ".md", ".markdown", ".txt"];
 const MENTION_PAGE_SIZE = 6;
 const CHAT_INPUT_MIN_HEIGHT = 72;
 const CHAT_INPUT_DEFAULT_HEIGHT = 96;
-const CHAT_INPUT_MAX_VIEWPORT_RATIO = 0.4;
+const CHAT_INPUT_MOBILE_DEFAULT_HEIGHT = CHAT_INPUT_MIN_HEIGHT;
+const CHAT_INPUT_DESKTOP_MAX_VIEWPORT_RATIO = 0.4;
+const CHAT_INPUT_MOBILE_MAX_VIEWPORT_RATIO = 0.28;
 
 type ChatInputResizeState = {
   pointerId: number;
@@ -144,10 +146,25 @@ function getChatInputMaxHeight() {
     return 320;
   }
 
+  const maxViewportRatio =
+    window.innerWidth < 640
+      ? CHAT_INPUT_MOBILE_MAX_VIEWPORT_RATIO
+      : CHAT_INPUT_DESKTOP_MAX_VIEWPORT_RATIO;
+
   return Math.max(
     CHAT_INPUT_MIN_HEIGHT,
-    Math.floor(window.innerHeight * CHAT_INPUT_MAX_VIEWPORT_RATIO),
+    Math.floor(window.innerHeight * maxViewportRatio),
   );
+}
+
+function getChatInputDefaultHeight() {
+  if (typeof window === "undefined") {
+    return CHAT_INPUT_DEFAULT_HEIGHT;
+  }
+
+  return window.innerWidth < 640
+    ? CHAT_INPUT_MOBILE_DEFAULT_HEIGHT
+    : CHAT_INPUT_DEFAULT_HEIGHT;
 }
 
 function clampChatInputHeight(value: number) {
@@ -257,7 +274,7 @@ export function ChatComposer({
   const [ragEnabled, setRagEnabled] = useState(true);
   const [modelId, setModelId] = useState("");
   const [chatInputHeight, setChatInputHeight] = useState(
-    CHAT_INPUT_DEFAULT_HEIGHT,
+    getChatInputDefaultHeight,
   );
   const [isResizingInput, setIsResizingInput] = useState(false);
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
@@ -306,6 +323,7 @@ export function ChatComposer({
     mentionPage * MENTION_PAGE_SIZE,
     mentionPage * MENTION_PAGE_SIZE + MENTION_PAGE_SIZE,
   );
+  const chatInputMaxHeight = getChatInputMaxHeight();
 
   useEffect(() => {
     const handleWindowResize = () => {
@@ -655,7 +673,7 @@ export function ChatComposer({
           </div>
         )}
 
-        <div className="flex items-start gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           {showAttachmentButton && (
             <Button
               type="button"
@@ -669,7 +687,7 @@ export function ChatComposer({
               <Paperclip />
             </Button>
           )}
-          <div className="relative flex-1 pt-2">
+          <div className="relative min-w-0 flex-1 pt-2">
             <button
               type="button"
               aria-label="调整输入框高度"
@@ -683,33 +701,33 @@ export function ChatComposer({
             >
               <span className="h-1 w-12 rounded-full bg-current" />
             </button>
-          <Textarea
-            ref={textAreaRef}
-            value={chatInput}
-            maxLength={MAX_CHAT_MESSAGE_LENGTH}
-            onChange={handleChatInputChange}
-            onKeyDown={handleChatKeyDown}
-            onFocus={() => {
-              const cursorPosition =
-                textAreaRef.current?.selectionStart ?? chatInput.length;
-              const nextTrigger = getMentionTrigger(chatInput, cursorPosition);
-              if (nextTrigger) {
-                setMentionTrigger(nextTrigger);
-                setMentionPickerOpen(true);
-              }
-            }}
-            className="w-full resize-none rounded-[6px] border-transparent px-2 py-2 text-sm leading-6 placeholder:text-slate-400 focus-visible:border-transparent focus-visible:ring-0"
-            style={{
-              height: `${chatInputHeight}px`,
-              minHeight: `${CHAT_INPUT_MIN_HEIGHT}px`,
-              maxHeight: "40svh",
-            }}
-            placeholder={placeholder}
-            aria-label="输入问题"
-            disabled={isBusy}
-          />
+            <Textarea
+              ref={textAreaRef}
+              value={chatInput}
+              maxLength={MAX_CHAT_MESSAGE_LENGTH}
+              onChange={handleChatInputChange}
+              onKeyDown={handleChatKeyDown}
+              onFocus={() => {
+                const cursorPosition =
+                  textAreaRef.current?.selectionStart ?? chatInput.length;
+                const nextTrigger = getMentionTrigger(chatInput, cursorPosition);
+                if (nextTrigger) {
+                  setMentionTrigger(nextTrigger);
+                  setMentionPickerOpen(true);
+                }
+              }}
+              className="w-full resize-none rounded-[6px] border-transparent px-2 py-2 text-sm leading-6 placeholder:text-slate-400 focus-visible:border-transparent focus-visible:ring-0"
+              style={{
+                height: `${chatInputHeight}px`,
+                minHeight: `${CHAT_INPUT_MIN_HEIGHT}px`,
+                maxHeight: `${chatInputMaxHeight}px`,
+              }}
+              placeholder={placeholder}
+              aria-label="输入问题"
+              disabled={isBusy}
+            />
             {mentionPickerOpen && !isBusy && (
-              <div className="absolute right-0 bottom-full left-0 z-20 mb-2 max-h-[55vh] min-w-0 rounded-[8px] border border-slate-200 bg-white p-2 shadow-lg sm:left-auto sm:w-[28rem]">
+              <div className="absolute right-0 bottom-full left-0 z-20 mb-2 max-h-[50dvh] min-w-0 max-w-full rounded-[8px] border border-slate-200 bg-white p-2 shadow-lg sm:left-auto sm:w-[28rem]">
                 <div className="px-2 py-1 text-xs text-slate-500">
                   {mentionTrigger?.query
                     ? `筛选：${mentionTrigger.query}`
@@ -794,8 +812,8 @@ export function ChatComposer({
           </div>
         </div>
 
-        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 sm:flex sm:flex-wrap">
             {showContextControls && (
               <>
                 <Tooltip>
@@ -804,7 +822,7 @@ export function ChatComposer({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal normal-case"
+                      className="h-10 shrink-0 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal normal-case xl:h-8"
                       aria-pressed={ragEnabled}
                       onClick={handleRagToggle}
                       disabled={isControlBusy}
@@ -829,7 +847,7 @@ export function ChatComposer({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 max-w-full min-w-0 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal normal-case sm:max-w-[15rem]"
+                      className="h-10 max-w-full min-w-0 flex-1 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal normal-case xl:h-8 xl:flex-none xl:max-w-[15rem]"
                       disabled={
                         isControlBusy ||
                         isLoadingModels ||
@@ -883,14 +901,14 @@ export function ChatComposer({
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-2">
+          <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
             <span className="text-xs text-slate-500">
               {chatInput.length}/{MAX_CHAT_MESSAGE_LENGTH}
             </span>
             <Button
               type="button"
               size="sm"
-              className="h-8 rounded-[6px] bg-blue-600 px-3 text-xs font-medium tracking-normal text-white normal-case hover:bg-blue-700"
+              className="h-10 rounded-[6px] bg-blue-600 px-4 text-xs font-medium tracking-normal text-white normal-case hover:bg-blue-700 xl:h-8 xl:px-3"
               aria-label={isSubmitting ? "打断" : "发送"}
               disabled={!isSubmitting && (!hasMessageContent || disabled)}
               onClick={() => {
@@ -912,7 +930,7 @@ export function ChatComposer({
         </div>
       </div>
       {helperText && (
-        <div className="mx-auto mt-2 max-w-[800px] px-1 text-xs text-slate-500">
+        <div className="mx-auto mt-2 hidden max-w-[800px] px-1 text-xs text-slate-500 sm:block">
           {helperText}
         </div>
       )}

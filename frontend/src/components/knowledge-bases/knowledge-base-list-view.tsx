@@ -656,34 +656,41 @@ export function KnowledgeBaseListView({
   }, [searchOpen]);
 
   return (
-    <section className="min-h-[calc(100svh-5rem)] bg-slate-50/60 px-3 py-4 text-slate-900 sm:px-5">
+    <section className="min-h-[calc(100svh-5rem)] bg-slate-50/60 px-3 py-3 text-slate-900 sm:px-5 sm:py-4">
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as KnowledgeBaseTab)}
-        className="mx-auto flex max-w-[1440px] flex-col gap-10"
+        className="mx-auto flex max-w-[1440px] flex-col gap-8 sm:gap-10"
       >
-        <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <TabsList
-            variant="line"
-            className="flex h-auto flex-wrap justify-start gap-3 p-0"
-          >
-            {knowledgeBaseTabs.map((item) => (
-              <TabsTrigger
-                key={item.value}
-                value={item.value}
-                className="h-10 flex-none rounded-full px-5 text-sm font-semibold tracking-normal normal-case text-slate-600 hover:bg-white hover:text-slate-950 data-active:bg-white data-active:text-slate-950 data-active:shadow-sm data-active:hover:bg-white data-active:hover:text-slate-950 group-data-[variant=line]/tabs-list:data-active:after:opacity-0"
-              >
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-row-reverse items-center gap-2">
+        <header className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="-mx-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
+            <TabsList
+              variant="line"
+              className="flex h-auto w-max min-w-full flex-nowrap justify-start gap-2 p-0 sm:w-auto sm:min-w-0 sm:gap-3"
+            >
+              {knowledgeBaseTabs.map((item) => (
+                <TabsTrigger
+                  key={item.value}
+                  value={item.value}
+                  className="h-10 flex-none rounded-full px-4 text-sm font-semibold tracking-normal normal-case text-slate-600 hover:bg-white hover:text-slate-950 data-active:bg-white data-active:text-slate-950 data-active:shadow-sm data-active:hover:bg-white data-active:hover:text-slate-950 group-data-[variant=line]/tabs-list:data-active:after:opacity-0 sm:px-5"
+                >
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          <div className="grid min-w-0 grid-cols-[auto_auto_1fr] items-center gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            <div
+              className={cn(
+                "flex min-w-0 flex-row-reverse items-center gap-2",
+                searchOpen && "col-span-3 flex-row",
+              )}
+            >
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
-                className="rounded-full border-slate-200 bg-white text-slate-700"
+                className="h-11 w-11 rounded-full border-slate-200 bg-white text-slate-700 sm:h-10 sm:w-10"
                 aria-label={searchOpen ? "收起搜索" : "搜索知识库"}
                 onClick={handleSearchButtonClick}
               >
@@ -691,13 +698,13 @@ export function KnowledgeBaseListView({
               </Button>
               <div
                 className={cn(
-                  "grid transition-all duration-300",
+                  "grid min-w-0 transition-all duration-300",
                   searchOpen
-                    ? "w-64 opacity-100"
+                    ? "w-full flex-1 opacity-100 sm:w-64 sm:flex-none"
                     : "pointer-events-none w-0 opacity-0",
                 )}
               >
-                <div className="flex h-10 min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 shadow-sm">
+                <div className="flex h-11 min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 shadow-sm sm:h-10">
                   <Input
                     ref={searchInputRef}
                     value={searchTerm}
@@ -721,12 +728,12 @@ export function KnowledgeBaseListView({
                 </div>
               </div>
             </div>
-            <div className="flex overflow-hidden rounded-full border border-slate-200 bg-white">
+            <div className="flex h-11 overflow-hidden rounded-full border border-slate-200 bg-white sm:h-10">
               <Button
                 type="button"
                 variant={viewMode === "card" ? "default" : "ghost"}
                 className={cn(
-                  "h-10 rounded-none px-3",
+                  "h-full rounded-none px-3",
                   viewMode === "card"
                     ? "bg-sky-300 text-white hover:bg-sky-400"
                     : "text-slate-600",
@@ -741,7 +748,7 @@ export function KnowledgeBaseListView({
                 type="button"
                 variant={viewMode === "list" ? "default" : "ghost"}
                 className={cn(
-                  "h-10 rounded-none px-3",
+                  "h-full rounded-none px-3",
                   viewMode === "list"
                     ? "bg-sky-300 text-white hover:bg-sky-400"
                     : "text-slate-600",
@@ -758,7 +765,7 @@ export function KnowledgeBaseListView({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 rounded-full border-slate-200 bg-white px-5 text-sm tracking-normal normal-case"
+                  className="h-11 w-full justify-center rounded-full border-slate-200 bg-white px-4 text-sm tracking-normal normal-case sm:h-10 sm:w-auto sm:px-5"
                 >
                   {sortLabel}
                   <ChevronDown data-icon="inline-end" />
@@ -786,7 +793,7 @@ export function KnowledgeBaseListView({
             </DropdownMenu>
             <Button
               type="button"
-              className="h-10 rounded-full bg-white px-5 text-sm tracking-normal text-slate-900 shadow-sm hover:bg-slate-50 normal-case"
+              className="col-span-3 h-11 justify-center rounded-full bg-white px-5 text-sm tracking-normal text-slate-900 shadow-sm hover:bg-slate-50 normal-case sm:col-span-auto sm:h-10"
               onClick={openCreateSheet}
             >
               <Plus data-icon="inline-start" />
@@ -797,8 +804,8 @@ export function KnowledgeBaseListView({
 
         {activeTab === "all" && (
           <section>
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-normal text-slate-950">
+          <div className="mb-4 flex items-center justify-between gap-3 sm:mb-5">
+            <h2 className="text-xl font-semibold tracking-normal text-slate-950 sm:text-2xl">
               精选知识库
             </h2>
             <Button
@@ -810,7 +817,7 @@ export function KnowledgeBaseListView({
               <ArrowRight data-icon="inline-end" />
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
             {featuredItems.map((item) => (
               <FeaturedCard
                 key={item.id}

@@ -41,7 +41,7 @@
 | 阶段 21：Chat SSE 流式输出、头像上传与 @ 文件上下文 | 已完成 | 新增 Chat SSE 边流边保存、OSS 头像上传、`@` 文件 mention、标题感知文档匹配和对应前后端接入；后端 112 个测试、前端构建和目标 ESLint 已通过。                                     |
 | 阶段 22：Settings/Chat 验收修复与协作规则升级   | 已完成 | Settings 资料编辑二次验收、默认头像持久化、Chat mention CLI 策略、乱码修复、点击沟通区域标记已读、移动端约束和多 thread/worktree 协作规则已完成；后端 118 个测试、前端构建和目标 ESLint 已通过。 |
 | 阶段 23：Settings 联系方式与头像存储状态契约同步 | 已完成 | `UserResponse` / `PATCH /api/auth/me` 扩展联系方式 `phone`，补充 `avatarStorageConfigured`，头像上传改为后端鉴权内容代理和前端 blob 渲染；真实 OSS 上传、Settings 验收、后端 123 个测试和前端验证已通过。 |
-| 阶段 23 后续 Bug 修复与移动端收尾 | 已完成 | 修复 Chat 未读触发、流式自动滚动、输入框拖动高度和紧凑 header；Documents 同知识库同名上传返回 409；Settings 模型测试兼容 OpenAI-compatible 响应；补齐主导航页面移动端 smoke 约束。 |
+| 阶段 23 后续 Bug 修复与移动端收尾 | 已完成 | 修复 Chat 未读触发、流式自动滚动、输入框拖动高度、紧凑 header 和移动端消息优先 Sheet 结构；Documents 同知识库同名上传返回 409；Settings 模型测试兼容 OpenAI-compatible 响应并删除账号资料指定描述；补齐 `/KnowledgeBases` 手机端 tabs/工具栏/精选知识库和主导航页面移动端 smoke 约束。 |
 | 项目结构整理：前后端分目录 | 已完成 | 前端文件迁移到 `frontend/`，后端保留在 `backend/`，根目录作为协调仓库；根目录 `package.json` 已移除，Compose 前端 build context 指向 `./frontend`，运行日志和个人工具状态已从项目提交中排除。 |
 
 ## 项目结构整理：前后端分目录
@@ -164,6 +164,10 @@ docker compose up -d
 - 移动端：
   - `SliderLayout`、`MainHeader`、Chat、Documents、Settings 相关容器补齐 `min-w-0`、`overflow-x-hidden`、单列/弹窗尺寸约束和小屏触控布局。
   - 移动端 smoke 范围包括 `/`、`/KnowledgeBases`、`/Documents`、`/Jobs`、`/Chat`、`/Settings`、`/login`。
+  - `/KnowledgeBases` 手机端 tabs 改为横向可滚动 pill tab，搜索、视图切换、排序和新建按钮拆成触控友好的小屏工具栏，精选知识库区域收紧标题、间距和单列卡片首屏布局。
+  - `/Chat/{sessionId}` 手机端改为消息优先结构，会话列表和引用来源默认不占用主屏高度，分别通过底部 Sheet 打开；桌面端仍保留三栏结构。
+  - `ChatComposer` 手机端输入区默认更短、最大高度更保守，RAG/模型与字数/发送分行展示，mention picker 限制在输入区和视口宽度内。
+  - `/Settings` 账号资料卡片删除用户指定的账号资料说明文案，不影响编辑资料弹窗和头像/联系方式能力。
 
 ### 验收结果
 
@@ -176,6 +180,7 @@ docker compose up -d
 - `cd frontend && rg -n "fetch\(" src` 仅匹配 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
 - 指定 Chat/Documents/Settings 范围内，“流式生成 · 会结合当前会话上下文”、旧输入框放大状态和常见 mojibake 检查无匹配。
 - Browser 验收覆盖 `/Chat/138`、`/Documents/299`、`/Settings` 和移动端 smoke；结果以本轮最终汇总为准。
+- 本轮响应式专项 Browser 验收覆盖 `375x812`、`360x740`、`768x1024`、`1440x900`：`/KnowledgeBases` 手机端无页面级横向滚动，tabs 仅在自身容器横向滚动，工具按钮保持触控尺寸，精选卡片首屏可读；`/Chat/138` 手机/小手机/平板默认隐藏左会话和右引用面板，移动端入口可打开会话/引用底部 Sheet，mention picker 可插入 `@文档名` 且不溢出；桌面端恢复三栏结构；`/Settings` 指定账号资料描述不存在。
 
 ## 阶段 22：Settings/Chat 验收修复与协作规则升级
 

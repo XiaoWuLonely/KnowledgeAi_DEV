@@ -97,6 +97,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -774,6 +781,8 @@ export function RagChatWorkspace({
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isCancellingGeneration, setIsCancellingGeneration] = useState(false);
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
+  const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
   const [showScrollToBottomButton, setShowScrollToBottomButton] =
     useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -2164,54 +2173,131 @@ export function RagChatWorkspace({
   };
 
   const hasMessages = messages.length > 0;
+  const renderKnowledgeBaseSelector = (selectId: string) =>
+    canChooseKnowledgeBase ? (
+      <div className="mb-3">
+        <label
+          htmlFor={selectId}
+          className="mb-1 block text-xs font-medium text-slate-500"
+        >
+          知识库
+        </label>
+        <Select value={knowledgeBase.id} onValueChange={onKnowledgeBaseChange}>
+          <SelectTrigger
+            id={selectId}
+            className="h-10 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-xs normal-case tracking-normal text-slate-700 focus-visible:border-blue-400 xl:h-9"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            <SelectGroup>
+              {knowledgeBases.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  <span className="min-w-0 truncate">{item.name}</span>
+                  {item.sharedWithMe && (
+                    <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                      共享
+                    </span>
+                  )}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+    ) : null;
+
+  const renderSessionList = (closeOnSelect = false) =>
+    isLoadingSessions ? (
+      <SessionSkeleton />
+    ) : sessions.length > 0 ? (
+      <div className="flex flex-col gap-2">
+        {sessions.map((session) => (
+          <SessionListItem
+            key={session.id}
+            session={session}
+            isActive={session.id === activeSessionId}
+            isBusy={mutatingSessionId === session.id}
+            onOpen={() => {
+              if (closeOnSelect) {
+                setMobileSessionsOpen(false);
+              }
+              void handleOpenSession(session.id);
+            }}
+            onRename={() => {
+              if (closeOnSelect) {
+                setMobileSessionsOpen(false);
+              }
+              openRenameDialog(session);
+            }}
+            onDelete={() => {
+              if (closeOnSelect) {
+                setMobileSessionsOpen(false);
+              }
+              setDeletingSession(session);
+            }}
+            onTogglePin={() => void handleTogglePin(session)}
+            onMarkUnread={() => void handleMarkUnread(session)}
+          />
+        ))}
+      </div>
+    ) : (
+      <div className="rounded-[8px] border border-dashed border-slate-200 px-3 py-8 text-center">
+        <MessageSquarePlus className="mx-auto size-6 text-slate-300" />
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          暂无会话。可以先提问，系统会自动创建一个新会话。
+        </p>
+      </div>
+    );
+
+  const renderSourceList = () =>
+    latestSources.length > 0 ? (
+      <div className="flex flex-col gap-3">
+        {latestSources.map((source, index) => (
+          <SourceCard
+            key={getSourceKey(source)}
+            source={source}
+            index={index}
+            expanded={expandedSources.has(getSourceKey(source))}
+            onToggle={() => toggleSource(source)}
+          />
+        ))}
+      </div>
+    ) : selectedAssistantMessage ? (
+      <div className="rounded-[8px] border border-dashed border-slate-200 px-4 py-8 text-center">
+        <Info className="mx-auto size-7 text-slate-300" />
+        <h3 className="mt-3 text-sm font-semibold text-slate-800">
+          当前回答没有可展示的引用来源
+        </h3>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          后端返回了助手回答，但 sources 为空；这通常表示当前问题没有匹配到足够可展示的文档片段。
+        </p>
+      </div>
+    ) : (
+      <div className="rounded-[8px] border border-dashed border-slate-200 px-4 py-8 text-center">
+        <FileText className="mx-auto size-7 text-slate-300" />
+        <h3 className="mt-3 text-sm font-semibold text-slate-800">
+          暂无引用来源
+        </h3>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          发送问题并获得回答后，这里会展示后端返回的文档名、chunk 序号和片段摘要。
+        </p>
+      </div>
+    );
 
   return (
     <section
       className={cn(
         isEmbedded
           ? "flex h-full min-h-0 flex-col overflow-hidden bg-white text-slate-900"
-          : "grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(8rem,0.28fr)_minmax(0,1fr)_minmax(8rem,0.28fr)] overflow-hidden bg-white text-slate-900 xl:grid-cols-[240px_minmax(0,1fr)_320px] xl:grid-rows-1",
+          : "grid h-full min-h-0 min-w-0 grid-cols-1 overflow-hidden bg-white text-slate-900 xl:grid-cols-[240px_minmax(0,1fr)_320px]",
         className,
       )}
     >
       {!isEmbedded && (
-      <aside className="flex min-h-0 min-w-0 flex-col border-b border-slate-200 bg-white xl:border-r xl:border-b-0">
+      <aside className="hidden min-h-0 min-w-0 flex-col border-r border-slate-200 bg-white xl:flex">
         <div className="shrink-0 border-b border-slate-100 px-4 py-4">
-          {canChooseKnowledgeBase && (
-            <div className="mb-3">
-              <label
-                htmlFor="rag-knowledge-base"
-                className="mb-1 block text-xs font-medium text-slate-500"
-              >
-                知识库
-              </label>
-              <Select
-                value={knowledgeBase.id}
-                onValueChange={onKnowledgeBaseChange}
-              >
-                <SelectTrigger
-                  id="rag-knowledge-base"
-                  className="h-9 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-xs normal-case tracking-normal text-slate-700 focus-visible:border-blue-400"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectGroup>
-                    {knowledgeBases.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        <span className="min-w-0 truncate">{item.name}</span>
-                        {item.sharedWithMe && (
-                          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
-                            共享
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          {renderKnowledgeBaseSelector("rag-knowledge-base")}
           <Button
             type="button"
             className="h-10 w-full cursor-pointer rounded-[6px] bg-blue-600 text-sm font-medium tracking-normal text-white normal-case shadow-sm hover:bg-blue-700"
@@ -2247,32 +2333,7 @@ export function RagChatWorkspace({
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto pr-1">
-            {isLoadingSessions ? (
-              <SessionSkeleton />
-            ) : sessions.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {sessions.map((session) => (
-                  <SessionListItem
-                    key={session.id}
-                    session={session}
-                    isActive={session.id === activeSessionId}
-                    isBusy={mutatingSessionId === session.id}
-                    onOpen={() => void handleOpenSession(session.id)}
-                    onRename={() => openRenameDialog(session)}
-                    onDelete={() => setDeletingSession(session)}
-                    onTogglePin={() => void handleTogglePin(session)}
-                    onMarkUnread={() => void handleMarkUnread(session)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[8px] border border-dashed border-slate-200 px-3 py-8 text-center">
-                <MessageSquarePlus className="mx-auto size-6 text-slate-300" />
-                <p className="mt-2 text-xs leading-5 text-slate-500">
-                  暂无会话。可以先提问，系统会自动创建一个新会话。
-                </p>
-              </div>
-            )}
+            {renderSessionList()}
           </div>
         </div>
       </aside>
@@ -2281,33 +2342,79 @@ export function RagChatWorkspace({
       <main
         className={cn(
           "flex min-h-0 min-w-0 flex-col bg-white",
-          !isEmbedded && "border-b border-slate-200 xl:border-b-0",
+          !isEmbedded && "xl:border-b-0",
           isEmbedded && "flex-1",
         )}
       >
-        <header className="flex min-h-12 shrink-0 flex-col gap-2 border-b border-slate-200 px-4 py-2 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <header className="flex min-h-12 shrink-0 flex-col gap-2 border-b border-slate-200 px-3 py-2 sm:px-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 sm:flex-wrap">
               <span className="truncate text-sm font-semibold text-slate-900">
                 {knowledgeBase.name}
               </span>
-              <span className="rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
+              <span className="hidden rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 sm:inline-flex">
                 {knowledgeBase.docs} 个文档
               </span>
-              <span className="rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
+              <span className="hidden rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 sm:inline-flex">
                 {knowledgeBase.chunks} 个 chunks
               </span>
-              <span className="inline-flex items-center gap-1 rounded-[5px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+              <span className="hidden items-center gap-1 rounded-[5px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 sm:inline-flex">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 RAG 已启用
               </span>
-              <KnowledgeBaseRoleBadge item={knowledgeBase} />
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-[5px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 sm:hidden">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                RAG
+              </span>
+              <span className="hidden sm:inline-flex">
+                <KnowledgeBaseRoleBadge item={knowledgeBase} />
+              </span>
             </div>
             <p className="mt-1 truncate text-xs text-slate-500">
               {activeSession
                 ? `当前会话：${activeSession.title || "新会话"}`
                 : "当前没有选中会话，首次提问会自动创建。"}
             </p>
+            {!isEmbedded && (
+              <div className="mt-2 flex min-w-0 items-center gap-2 xl:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-w-0 flex-1 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal text-slate-700 normal-case xl:h-9"
+                  onClick={() => setMobileSessionsOpen(true)}
+                >
+                  <MessageSquarePlus data-icon="inline-start" />
+                  会话
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-w-0 flex-1 rounded-[6px] border-slate-200 px-3 text-xs font-medium tracking-normal text-slate-700 normal-case xl:h-9"
+                  onClick={() => setMobileSourcesOpen(true)}
+                >
+                  <FileText data-icon="inline-start" />
+                  引用来源
+                  <span className="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                    {latestSources.length}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="新建会话"
+                  className="h-11 w-11 shrink-0 rounded-[6px] border-slate-200 text-slate-700 xl:h-9 xl:w-9"
+                  onClick={() => void handleCreateSession()}
+                  disabled={isCreatingSession || isLoadingSessions}
+                >
+                  {isCreatingSession ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <MessageSquarePlus />
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
           {isEmbedded && (
           <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -2484,7 +2591,7 @@ export function RagChatWorkspace({
       </main>
 
       {!isEmbedded && (
-      <aside className="flex min-h-0 min-w-0 flex-col bg-white xl:border-l xl:border-slate-200">
+      <aside className="hidden min-h-0 min-w-0 flex-col border-l border-slate-200 bg-white xl:flex">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="truncate text-base font-semibold text-slate-900">
@@ -2497,41 +2604,92 @@ export function RagChatWorkspace({
         </header>
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-          {latestSources.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {latestSources.map((source, index) => (
-                <SourceCard
-                  key={getSourceKey(source)}
-                  source={source}
-                  index={index}
-                  expanded={expandedSources.has(getSourceKey(source))}
-                  onToggle={() => toggleSource(source)}
-                />
-              ))}
-            </div>
-          ) : selectedAssistantMessage ? (
-            <div className="rounded-[8px] border border-dashed border-slate-200 px-4 py-8 text-center">
-              <Info className="mx-auto size-7 text-slate-300" />
-              <h3 className="mt-3 text-sm font-semibold text-slate-800">
-                当前回答没有可展示的引用来源
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                后端返回了助手回答，但 sources 为空；这通常表示当前问题没有匹配到足够可展示的文档片段。
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-[8px] border border-dashed border-slate-200 px-4 py-8 text-center">
-              <FileText className="mx-auto size-7 text-slate-300" />
-              <h3 className="mt-3 text-sm font-semibold text-slate-800">
-                暂无引用来源
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                发送问题并获得回答后，这里会展示后端返回的文档名、chunk 序号和片段摘要。
-              </p>
-            </div>
-          )}
+          {renderSourceList()}
         </div>
       </aside>
+      )}
+
+      {!isEmbedded && (
+        <>
+          <Sheet open={mobileSessionsOpen} onOpenChange={setMobileSessionsOpen}>
+            <SheetContent
+              side="bottom"
+              className="max-h-[86dvh] rounded-t-[8px] border-slate-200"
+            >
+              <SheetHeader className="p-4 pr-14">
+                <SheetTitle className="text-base tracking-normal normal-case">
+                  问答会话
+                </SheetTitle>
+                <SheetDescription>
+                  切换、管理或新建当前知识库下的问答会话。
+                </SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+                {renderKnowledgeBaseSelector("rag-knowledge-base-mobile")}
+                <Button
+                  type="button"
+                  className="mb-4 h-10 w-full cursor-pointer rounded-[6px] bg-blue-600 text-sm font-medium tracking-normal text-white normal-case shadow-sm hover:bg-blue-700"
+                  onClick={() => {
+                    setMobileSessionsOpen(false);
+                    void handleCreateSession();
+                  }}
+                  disabled={isCreatingSession || isLoadingSessions}
+                >
+                  {isCreatingSession ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <MessageSquarePlus data-icon="inline-start" />
+                  )}
+                  新建会话
+                </Button>
+                <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                  <span className="text-xs font-medium text-slate-500">
+                    会话列表
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="刷新会话"
+                    className="cursor-pointer rounded-[5px] text-slate-500 hover:bg-slate-100"
+                    onClick={() => void loadSessions()}
+                    disabled={isLoadingSessions}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "size-3.5",
+                        isLoadingSessions && "animate-spin",
+                      )}
+                    />
+                  </Button>
+                </div>
+                {renderSessionList(true)}
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <Sheet open={mobileSourcesOpen} onOpenChange={setMobileSourcesOpen}>
+            <SheetContent
+              side="bottom"
+              className="max-h-[82dvh] rounded-t-[8px] border-slate-200"
+            >
+              <SheetHeader className="p-4 pr-14">
+                <SheetTitle className="flex items-center gap-2 text-base tracking-normal normal-case">
+                  引用来源
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-500">
+                    {latestSources.length}
+                  </span>
+                </SheetTitle>
+                <SheetDescription>
+                  查看当前选中助手回答关联的文档片段。
+                </SheetDescription>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+                {renderSourceList()}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </>
       )}
 
       <Dialog

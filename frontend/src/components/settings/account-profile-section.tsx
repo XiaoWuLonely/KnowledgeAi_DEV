@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import {
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -371,9 +370,6 @@ export function AccountProfileSection({
         <CardTitle className="font-sans text-base normal-case tracking-normal">
           账号资料
         </CardTitle>
-        <CardDescription>
-          账号资料从后端读取；可在弹窗中修改用户名、邮箱、联系方式和头像。
-        </CardDescription>
         <CardAction>
           <Button type="button" variant="outline" size="sm" onClick={onLogout}>
             <UserRound data-icon="inline-start" />

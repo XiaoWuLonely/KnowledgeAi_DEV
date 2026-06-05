@@ -50,10 +50,12 @@ KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、�
 - Chat 会话列表、消息列表、SSE 流式发送、模型选择、引用来源面板、未读会话和后台生成状态；用户上滚后流式输出不强制回底，输入框支持拖动调整高度。
 - Chat 生成中禁用 RAG/模型选择，发送按钮切换为“打断”；RAG 开关提供 hover 说明。
 - Chat 输入框支持 CLI 风格 `@` 当前知识库文档 mention：仅行首或空白后触发，支持 inline query、高亮、键盘选择和分页，发送时传递 `mentionedDocumentIds`。
+- Chat 移动端已改为消息优先布局，会话列表和引用来源通过底部 Sheet 打开；桌面端保留左会话、中消息、右引用三栏结构。
 - Settings 用户资料只读展示、编辑资料弹窗、模型配置、模型测试、偏好、RAG 参数和账号删除。
 - Settings 账号资料区支持联系方式展示/编辑、默认头像选择和头像上传；当 `avatarStorageConfigured=false` 时提示“头像上传需要先配置 OSS；当前可选择默认头像”；Header/Sidebar/Settings 统一按上传头像后端代理 blob 或默认头像 preset 回显。
+- Settings 账号资料卡片已删除用户指定的账号资料说明文案，保留编辑资料能力。
 - Header 未读角标和侧边栏今日交谈次数。
-- 主导航页面已补齐基础移动端布局约束，覆盖 Dashboard、KnowledgeBases、Documents、Jobs、Chat、Settings 和 Login。
+- 主导航页面已补齐基础移动端布局约束，覆盖 Dashboard、KnowledgeBases、Documents、Jobs、Chat、Settings 和 Login；`/KnowledgeBases` 手机端 tabs/工具栏和精选知识库首屏布局已完成专项响应式修复。
 
 ## 当前阶段状态
 
@@ -67,7 +69,7 @@ KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、�
 - 阶段 22 新增默认头像 preset 持久化、`UserResponse.avatarSource/avatarPresetId`、Settings profile 二次验收更新、刷新已登录页面后重新获取上传头像回显地址、Chat mention CLI 策略和 token 删除同步、乱码修复、点击沟通区域标记已读防抖和移动端布局约束。
 - 阶段 22 二次验收后端复核已通过 `Stage22DefaultAvatarTests` 专项测试和后端全量回归：`118 tests, 0 failures, 0 errors`；前端目标 ESLint 和 `pnpm build` 已通过，直接 `fetch` 仍只有 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
 - 阶段 23 已完成 Settings 联系方式和头像存储状态契约：`UserResponse.phone`、`UserResponse.avatarStorageConfigured`、`PATCH /api/auth/me` 的 `phone` 更新、OSS 未配置头像上传中文脱敏提示、后端头像内容代理、Settings 联系方式展示和真实 OSS 上传验收；`Stage23ProfileContactTests` 3 个测试、后端全量 123 个测试、前端目标 ESLint/build/fetch/mojibake 检查和 `/Settings` Browser 验收已通过。
-- 阶段 23 后续 Bug 修复已完成：Chat 未读触发、流式滚动跟随、输入框拖动高度和紧凑 header；Documents 同知识库同名上传前端拦截与后端 `409 Conflict`；Settings 模型测试 OpenAI-compatible 兼容修复；主导航页面移动端 smoke 约束。相关后端专项测试和全量回归、前端目标 ESLint/build/fetch/mojibake 检查已通过，Browser 验收结果见本轮最终汇总。
+- 阶段 23 后续 Bug 修复已完成：Chat 未读触发、流式滚动跟随、输入框拖动高度、紧凑 header 和移动端消息优先 Sheet 结构；Documents 同知识库同名上传前端拦截与后端 `409 Conflict`；Settings 模型测试 OpenAI-compatible 兼容修复和账号资料描述删除；`/KnowledgeBases` 手机端 tabs/工具栏/精选知识库响应式修复。相关后端专项测试和全量回归、前端目标 ESLint/build/fetch/mojibake 检查已通过，Browser 验收覆盖 `375x812`、`360x740`、`768x1024`、`1440x900`。
 - 项目开发推荐团队编排模式：主对话担任项目经理/协调者，负责审核计划、拆分任务、下发 Codex 后台 Thread/worktree 或 `AGENT_TEAM`、集成结果和最终验证；下发 worker 的思考/推理等级默认使用可用最高级（例如 `xhigh` / 最高级）。
 - `do.md` 修复已完成：Chat 模型选择、进入会话自动滚动、用户模型配置复用、Settings 模型测试、退出登录确认、引用来源跟随选中回答、未读角标、响应式问题、RAG tooltip、生成打断和 `.env` 本地模型兜底均已纳入阶段 14 收尾记录。
 - 本轮收尾新增 `ragEnabled` 和生成打断接口，API 契约已同步到 `doc/API.md`。

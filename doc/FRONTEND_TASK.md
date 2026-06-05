@@ -100,6 +100,13 @@ deleteCurrentUserAvatar()
    - `/Settings` 模型测试不强制重新填写已保存 API Key；测试请求只发送当前表单中有意义的 Base URL、API Key、Model，错误显示继续走脱敏消息。
    - Dashboard、KnowledgeBases、Documents、Jobs、Chat、Settings、Login 的移动端 smoke 重点修复横向溢出、弹窗宽度、按钮挤压和表单换行问题。
 
+5. 本轮移动端响应式兼容与 Chat 重构
+   - `/KnowledgeBases` 手机端 tabs 改为横向可滚动 pill tab，避免“精选知识库”换行压到工具栏；搜索、视图切换、排序和新建按钮改为小屏独立工具栏。
+   - `/KnowledgeBases` 精选知识库区域在小屏下收紧标题、间距和卡片栅格，保持桌面端 featured 四列布局不变。
+   - `/Chat/{sessionId}` 手机端改为消息优先布局；会话列表和引用来源默认不占用主屏高度，分别通过底部 Sheet 打开，桌面端仍保留左会话、中消息、右引用三栏结构。
+   - `ChatComposer` 手机端输入框最大高度改为更保守的视口比例，RAG/模型、字数和发送按钮分行展示，mention picker 限制在输入区宽度内。
+   - `/Settings` 账号资料卡片删除用户指定的账号资料说明文案，不影响编辑资料弹窗和头像/联系方式能力。
+
 ## UI 和交互要求
 
 - Settings 资料卡只读，不静默新增 mock-only 保存。
@@ -123,6 +130,7 @@ cd D:\Studio\MyWork\frontend
 pnpm exec eslint src/pages/Settings.tsx src/api/auth.ts src/store/auth.ts src/components/settings src/components/chat src/components/chat-page src/components/slider-sidebar.tsx src/components/MainHeader.tsx src/components/user-avatar.tsx
 pnpm exec eslint src/pages/Chat.tsx src/pages/Documents.tsx src/pages/Settings.tsx src/components/chat src/components/chat-page src/components/documents src/components/settings src/components/slider-layout.tsx src/components/slider-sidebar.tsx src/components/MainHeader.tsx
 pnpm build
+rg -n "<Settings 账号资料指定说明文案残留正则>" ..\frontend\src ..\doc
 rg -n "fetch\(" src
 rg -n "流式生成 · 会结合当前会话上下文|SearchCheck|Maximize2|Minimize2|isInputExpanded|setIsInputExpanded" src/components/chat-page src/components/chat src/pages/Chat.tsx
 rg -n "鏈|娣|鍏|璇|灞|鏀|�" src/components/chat-page src/components/chat src/pages/Chat.tsx src/pages/Documents.tsx src/pages/Settings.tsx
@@ -136,6 +144,12 @@ rg -n "鏈|娣|鍏|璇|灞|鏀|�" src/components/chat-page src/components/chat
 - 指定 Chat/Settings 范围 mojibake 残留检查无匹配。
 - `/Settings` Browser 验收已通过：联系方式可保存和清空，默认头像 preset 可保存，真实 OSS 上传头像刷新后以 `blob:` URL 回显，页面不展示“删除头像”按钮，DOM/text/console 未发现 OSS object key、AccessKey、Secret、Authorization、OSS 鉴权查询参数或永久 URL。
 - 本轮目标 ESLint、`pnpm build`、`fetch(` 例外检查、旧 Chat 文案/旧放大按钮状态检查和 Chat/Documents/Settings mojibake 检查已通过。
+- 本轮响应式兼容目标 ESLint 已通过：`pnpm exec eslint src/pages/Chat.tsx src/components/chat-page src/components/chat src/pages/Settings.tsx src/components/settings src/components/knowledge-bases`。
+- 本轮响应式兼容 `pnpm build` 已通过，仅保留既有 Vite 大 chunk 提示。
+- 指定 Settings 描述残留检查无匹配；`fetch(` 仍仅匹配 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
+- 本轮 Browser 响应式验收覆盖 `375x812`、`360x740`、`768x1024`、`1440x900`：`/KnowledgeBases` 手机端无页面级横向滚动，tabs 仅在自身容器内横向滚动，工具按钮保持触控尺寸，精选卡片首屏可读；桌面端 featured 栅格未退化。
+- `/Chat/138` Browser 验收已通过：手机和小手机默认隐藏左会话列表/右引用面板，仅显示聊天主界面；“会话”和“引用来源”可打开底部 Sheet；mention picker 在 360px 视口内不溢出，选择文档后能插入 `@文档名`；平板继续使用移动端 Sheet 结构，桌面端恢复三栏结构。
+- `/Settings` Browser 验收已通过：账号资料卡片不再出现指定描述，仍保留“账号资料”“退出登录”“编辑资料”和保存模型/RAG 配置入口，页面不新增“删除头像”入口。
 
 ## 手动验收路径
 
@@ -152,3 +166,5 @@ rg -n "鏈|娣|鍏|璇|灞|鏀|�" src/components/chat-page src/components/chat
 - `/Documents/{knowledgeBaseId}`：同一知识库内选择同名同后缀文件时前端 toast 提示并阻止重复项上传。
 - `/Settings`：保存配置后不重新填写 API Key 也能测试已保存模型；失败信息脱敏。
 - 小屏下 Settings、Chat、mention 列表、引用来源不横向溢出、不互相遮挡。
+- `/KnowledgeBases` 手机端：tabs 横向滚动，工具栏不和“精选知识库”互相挤压；精选卡片首屏可读且无横向滚动。
+- `/Chat/{sessionId}` 手机端：默认只展示聊天主界面；“会话”和“引用来源”按钮分别打开 Sheet，消息区没有内部横向滚动条。
