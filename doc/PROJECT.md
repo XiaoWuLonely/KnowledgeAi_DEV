@@ -4,7 +4,7 @@
 
 KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、项目文档或产品文档后，可以基于自己的资料进行检索增强问答。
 
-项目当前已完成 **阶段 22：Settings/Chat 验收修复与协作规则升级**，阶段 23 的 Settings 联系方式与头像存储状态契约同步正在进行。当前版本已经具备本地开发复现路径：根目录 Docker Compose 管理 PostgreSQL，后端在 `backend/` 启动，前端在 `frontend/` 启动；并补齐文档质量指标、重新处理入口、文档摘要、原始来源持久化、真正失败重试、持久化文档处理任务、可选 embedding、pgvector 向量字段、全文+语义混合检索、语义索引重建、用户级检索策略配置、全局后台任务中心、安全系统诊断、Chat SSE 流式输出、OSS 头像上传、默认头像持久化、当前知识库文档 `@` mention、Settings profile 二次验收更新和 Chat 验收交互修复；`do.md` 作为本地任务输入文件已加入 `.gitignore`，不再作为项目文件提交。
+项目当前已完成 **阶段 23：Settings 联系方式与 OSS 头像上传验收收尾**，并完成 Chat、Documents、Settings 与移动端体验的后续 Bug 修复。当前版本已经具备本地开发复现路径：根目录 Docker Compose 管理 PostgreSQL，后端在 `backend/` 启动，前端在 `frontend/` 启动；并补齐文档质量指标、重新处理入口、文档摘要、原始来源持久化、真正失败重试、持久化文档处理任务、可选 embedding、pgvector 向量字段、全文+语义混合检索、语义索引重建、用户级检索策略配置、全局后台任务中心、安全系统诊断、Chat SSE 流式输出、OSS 头像上传、默认头像持久化、当前知识库文档 `@` mention、Settings profile 二次验收更新、Chat 验收交互修复、联系方式资料字段、头像存储配置状态、后端头像内容代理、同知识库同名文档上传拦截、Settings 模型测试兼容修复和移动端 smoke 布局约束；`do.md` 作为本地任务输入文件已加入 `.gitignore`，不再作为项目文件提交。
 
 ## 当前能力
 
@@ -16,7 +16,7 @@ KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、�
 - 注册、登录、JWT 鉴权、重置密码、当前用户资料；`PATCH /api/auth/me` 支持可选更新用户名、邮箱和联系方式，邮箱/联系方式可清空。
 - 知识库 CRUD，支持 `featured` 和 `themeId`。
 - 知识库成员协作权限：`OWNER`、`EDITOR`、`VIEWER`。
-- 文档上传、解析、切片、索引状态流转。
+- 文档上传、解析、切片、索引状态流转；同一知识库内重复“文件名+后缀”上传返回 `409 Conflict`，不创建文档或处理任务。
 - 文档处理任务：上传和重新处理会创建持久化 job，记录任务类型、状态、进度、阶段、消息和脱敏错误。
 - 支持 `.txt`、`.md`、`.markdown`、文本型 `.pdf`、`.docx`、`.html`、`.htm`。
 - 文档质量指标：chunk 数、字符数、平均/最短/最长 chunk 长度和质量提示。
@@ -30,9 +30,9 @@ KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、�
 - 阶段 20 系统诊断：提供脱敏诊断接口，只返回数据库可达性、当前用户可见任务计数和模型兜底配置布尔状态，不暴露 Base URL、API Key、model、Authorization 或 JDBC URL。
 - RAG/Chat：会话、消息、引用来源、最近 6 条以内上下文、后台生成状态、RAG 开关、生成打断和阶段 21 SSE 流式输出。
 - 阶段 21 文件上下文：Chat 支持显式 `mentionedDocumentIds`，前端通过 `@` 选择当前知识库已索引文档；没有显式 mention 时，后端会对用户问题做文件标题感知匹配，帮助用户按标题指定文档内容。
-- 阶段 21/22/23 头像：支持上传当前用户头像到阿里云 OSS，数据库只保存 object key；支持 8 个默认头像 preset 持久化；用户资料接口返回 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`；OSS 未配置时上传接口返回脱敏中文提示“头像上传需要先配置 OSS 存储。”。
+- 阶段 21/22/23 头像：支持上传当前用户头像到阿里云 OSS，数据库只保存 object key；支持 8 个默认头像 preset 持久化；用户资料接口返回后端鉴权头像代理 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`；前端用 axios 读取头像 blob 后渲染，不暴露 OSS 鉴权查询参数；OSS 未配置时上传接口返回脱敏中文提示“头像上传需要先配置 OSS 存储。”。
 - 用户级模型配置：Base URL、加密 API Key、Model、timeout。
-- Settings 模型列表拉取和真实模型连接测试。
+- Settings 模型列表拉取和真实模型连接测试；测试接口可复用已保存 Key，兼容常见 OpenAI-compatible Chat Completion 响应并保持错误脱敏。
 - 用户偏好：语言、时区。
 - 今日交谈次数统计。
 - 健康检查：`GET /api/health`。
@@ -47,26 +47,27 @@ KnowFlow AI 是一个智能知识库问答平台。用户上传学习资料、�
 - 文档上传、文档列表、文档详情、质量提示、重新处理、摘要生成、处理任务进度和检索测试区。
 - 文档级和知识库级语义索引重建入口。
 - `/Jobs` 全局任务中心：展示后台任务状态、进度、阶段、消息、上下文和安全诊断摘要，支持刷新、筛选、重试和取消。
-- Chat 会话列表、消息列表、SSE 流式发送、模型选择、引用来源面板、未读会话和后台生成状态。
+- Chat 会话列表、消息列表、SSE 流式发送、模型选择、引用来源面板、未读会话和后台生成状态；用户上滚后流式输出不强制回底，输入框支持拖动调整高度。
 - Chat 生成中禁用 RAG/模型选择，发送按钮切换为“打断”；RAG 开关提供 hover 说明。
 - Chat 输入框支持 CLI 风格 `@` 当前知识库文档 mention：仅行首或空白后触发，支持 inline query、高亮、键盘选择和分页，发送时传递 `mentionedDocumentIds`。
 - Settings 用户资料只读展示、编辑资料弹窗、模型配置、模型测试、偏好、RAG 参数和账号删除。
-- Settings 账号资料区支持联系方式展示/编辑、默认头像选择和头像上传；当 `avatarStorageConfigured=false` 时提示“头像上传需要先配置 OSS；当前可选择默认头像”；Header/Sidebar/Settings 统一按上传头像签名 URL 或默认头像 preset 回显。
+- Settings 账号资料区支持联系方式展示/编辑、默认头像选择和头像上传；当 `avatarStorageConfigured=false` 时提示“头像上传需要先配置 OSS；当前可选择默认头像”；Header/Sidebar/Settings 统一按上传头像后端代理 blob 或默认头像 preset 回显。
 - Header 未读角标和侧边栏今日交谈次数。
+- 主导航页面已补齐基础移动端布局约束，覆盖 Dashboard、KnowledgeBases、Documents、Jobs、Chat、Settings 和 Login。
 
 ## 当前阶段状态
 
-- 阶段 0-20 已完成。
-- 阶段 21 已完成，并通过完整后端回归、前端构建和目标 ESLint。
+- 阶段 0-23 已完成。
 - 阶段 17 为文档上传和重新处理新增 `document_processing_jobs` 持久化任务表。前端 Documents 页面会轮询活跃任务，展示进度、阶段、消息和失败原因，并在任务活跃时禁用重复重新处理。
 - 阶段 18 新增可选 embedding 和混合检索。Search API 和 Chat RAG 共用 `DocumentRetrievalService`，返回 `hybridScore`、`fulltextScore`、`semanticScore`、`retrievalMode`，并保持 `score` 兼容字段。
 - 阶段 19 新增语义索引重建任务和用户级检索策略。`FULLTEXT` 模式会跳过 embedding 查询，`HYBRID` 模式按用户配置权重排序。
 - 阶段 20 新增全局后台任务中心、任务重试/取消、安全系统诊断和 `/Jobs` 前端页面。
 - 阶段 20 已通过阶段专项后端测试、完整后端回归、前端构建和目标 ESLint。
 - 阶段 21 新增 Chat SSE 流式输出、边流边保存、`@` 文件上下文、标题感知检索和 OSS 头像上传；专项后端测试覆盖流式事件、持久化 delta、打断防旧流写入、mention 权限、标题匹配和头像校验。
-- 阶段 22 新增默认头像 preset 持久化、`UserResponse.avatarSource/avatarPresetId`、Settings profile 二次验收更新、刷新已登录页面后重新获取上传头像短期签名 URL、Chat mention CLI 策略和 token 删除同步、乱码修复、点击沟通区域标记已读防抖和移动端布局约束。
+- 阶段 22 新增默认头像 preset 持久化、`UserResponse.avatarSource/avatarPresetId`、Settings profile 二次验收更新、刷新已登录页面后重新获取上传头像回显地址、Chat mention CLI 策略和 token 删除同步、乱码修复、点击沟通区域标记已读防抖和移动端布局约束。
 - 阶段 22 二次验收后端复核已通过 `Stage22DefaultAvatarTests` 专项测试和后端全量回归：`118 tests, 0 failures, 0 errors`；前端目标 ESLint 和 `pnpm build` 已通过，直接 `fetch` 仍只有 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
-- 阶段 23 正在同步 Settings 联系方式和头像存储状态契约：`UserResponse.phone`、`UserResponse.avatarStorageConfigured`、`PATCH /api/auth/me` 的 `phone` 更新、OSS 未配置头像上传中文脱敏提示，以及 Settings 联系方式展示。
+- 阶段 23 已完成 Settings 联系方式和头像存储状态契约：`UserResponse.phone`、`UserResponse.avatarStorageConfigured`、`PATCH /api/auth/me` 的 `phone` 更新、OSS 未配置头像上传中文脱敏提示、后端头像内容代理、Settings 联系方式展示和真实 OSS 上传验收；`Stage23ProfileContactTests` 3 个测试、后端全量 123 个测试、前端目标 ESLint/build/fetch/mojibake 检查和 `/Settings` Browser 验收已通过。
+- 阶段 23 后续 Bug 修复已完成：Chat 未读触发、流式滚动跟随、输入框拖动高度和紧凑 header；Documents 同知识库同名上传前端拦截与后端 `409 Conflict`；Settings 模型测试 OpenAI-compatible 兼容修复；主导航页面移动端 smoke 约束。相关后端专项测试和全量回归、前端目标 ESLint/build/fetch/mojibake 检查已通过，Browser 验收结果见本轮最终汇总。
 - 项目开发推荐团队编排模式：主对话担任项目经理/协调者，负责审核计划、拆分任务、下发 Codex 后台 Thread/worktree 或 `AGENT_TEAM`、集成结果和最终验证；下发 worker 的思考/推理等级默认使用可用最高级（例如 `xhigh` / 最高级）。
 - `do.md` 修复已完成：Chat 模型选择、进入会话自动滚动、用户模型配置复用、Settings 模型测试、退出登录确认、引用来源跟随选中回答、未读角标、响应式问题、RAG tooltip、生成打断和 `.env` 本地模型兜底均已纳入阶段 14 收尾记录。
 - 本轮收尾新增 `ragEnabled` 和生成打断接口，API 契约已同步到 `doc/API.md`。
@@ -285,7 +286,6 @@ JWT：
 - `KNOWFLOW_OSS_ACCESS_KEY_ID`
 - `KNOWFLOW_OSS_ACCESS_KEY_SECRET`
 - `KNOWFLOW_OSS_AVATAR_PREFIX`
-- `KNOWFLOW_OSS_SIGNED_URL_TTL_SECONDS`
 
 服务端口：
 

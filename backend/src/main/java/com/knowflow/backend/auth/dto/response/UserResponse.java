@@ -16,8 +16,8 @@ public class UserResponse {
     private String email;
     private String phone;
     /**
-     * Short-lived signed URL for uploaded avatars only. Preset avatars are rendered by the frontend
-     * from avatarPresetId and never require an OSS URL.
+     * Backend avatar content URL for uploaded avatars only. Preset avatars are rendered by the
+     * frontend from avatarPresetId and never require an OSS URL.
      */
     private String avatarUrl;
     private boolean avatarConfigured;

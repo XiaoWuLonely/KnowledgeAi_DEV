@@ -19,7 +19,7 @@ public class User {
     private String phone;
     /**
      * OSS object key for the user's avatar. Public APIs never return this value directly;
-     * AuthService converts it into a short-lived signed URL for frontend display.
+     * AuthService converts it into a backend avatar proxy URL for frontend display.
      */
     private String avatarObjectKey;
     /**

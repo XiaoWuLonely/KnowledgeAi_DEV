@@ -20,6 +20,7 @@ import com.knowflow.backend.settings.repository.UserPreferenceRepository;
 import com.knowflow.backend.settings.repository.UserRagSettingsRepository;
 import com.knowflow.backend.settings.security.ModelApiKeyCryptoService;
 import lombok.AllArgsConstructor;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -67,6 +68,7 @@ public class SettingsService {
     private final UserModelSettingsRepository userModelSettingsRepository;
     private final UserPreferenceRepository userPreferenceRepository;
     private final ModelApiKeyCryptoService cryptoService;
+    private final ObjectMapper objectMapper;
 
 
     /**
@@ -166,7 +168,7 @@ public class SettingsService {
                     .baseUrl(baseUrl)
                     .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .build();
-            OpenAiChatCompletionResponse response = restClient.post()
+            byte[] responseBody = restClient.post()
                     .uri("/chat/completions")
                     .body(new OpenAiChatCompletionRequest(
                             model,
@@ -174,7 +176,11 @@ public class SettingsService {
                             0.0
                     ))
                     .retrieve()
-                    .body(OpenAiChatCompletionResponse.class);
+                    .body(byte[].class);
+
+            // Some OpenAI-compatible gateways return JSON with text/plain or a missing JSON content type.
+            // Parse raw bytes so Settings model testing follows the same compatibility path as Chat.
+            OpenAiChatCompletionResponse response = objectMapper.readValue(responseBody, OpenAiChatCompletionResponse.class);
 
             if (response == null
                     || response.choices() == null

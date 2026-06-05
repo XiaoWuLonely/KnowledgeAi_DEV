@@ -139,6 +139,36 @@ export async function selectCurrentUserAvatarPreset(
   return response.data;
 }
 
+function toAvatarContentRequestPath(avatarUrl: string) {
+  const trimmedUrl = avatarUrl.trim();
+
+  if (!trimmedUrl || /^https?:\/\//i.test(trimmedUrl) || trimmedUrl.startsWith("//")) {
+    return null;
+  }
+
+  const requestPath = trimmedUrl.startsWith("/api/")
+    ? trimmedUrl.slice("/api".length)
+    : trimmedUrl;
+
+  return requestPath.startsWith("/auth/me/avatar/content")
+    ? requestPath
+    : null;
+}
+
+export async function getCurrentUserAvatarBlob(avatarUrl: string) {
+  const requestPath = toAvatarContentRequestPath(avatarUrl);
+
+  if (!requestPath) {
+    return null;
+  }
+
+  const response = await http.get<Blob>(requestPath, {
+    responseType: "blob",
+  });
+
+  return response.data;
+}
+
 export async function deleteCurrentUser() {
   await http.delete("/auth/me");
 }

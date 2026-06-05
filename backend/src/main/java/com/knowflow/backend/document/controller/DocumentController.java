@@ -50,6 +50,7 @@ public class DocumentController {
     private static final int CONTENT_TYPE_MAX_LENGTH = 64;
 
     private static final String STATUS_UPLOADED = "UPLOADED";
+    private static final String DUPLICATE_FILENAME_MESSAGE = "\u5f53\u524d\u77e5\u8bc6\u5e93\u5df2\u5b58\u5728\u540c\u540d\u6587\u6863\uff0c\u8bf7\u91cd\u547d\u540d\u540e\u518d\u4e0a\u4f20\u3002";
 
     private static final int DEFAULT_SEARCH_LIMIT = 5;
     private static final int MAX_SEARCH_LIMIT = 20;
@@ -111,11 +112,15 @@ public class DocumentController {
         Long userId = getCurrentUserId(jwt);
         accessService.requireEditor(knowledgeBaseId, userId);
         validateBasicFile(file);
+        String originalFilename = normalizeOriginalFilename(file.getOriginalFilename());
+        if (documentRepository.existsByKnowledgeBaseIdAndOriginalFilename(knowledgeBaseId, originalFilename)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, DUPLICATE_FILENAME_MESSAGE);
+        }
         byte[] sourceBytes = readUploadSourceBytes(file);
 
         Document document = new Document();
         document.setKnowledgeBaseId(knowledgeBaseId);
-        document.setOriginalFilename(file.getOriginalFilename());
+        document.setOriginalFilename(originalFilename);
         document.setContentType(safeContentType(file.getContentType()));
         document.setSizeBytes(file.getSize());
         document.setStatus(STATUS_UPLOADED);
@@ -445,6 +450,13 @@ public class DocumentController {
         if (filename == null || filename.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filename is required");
         }
+    }
+
+    private String normalizeOriginalFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filename is required");
+        }
+        return filename.trim();
     }
 
     /**

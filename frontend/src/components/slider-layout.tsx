@@ -87,13 +87,13 @@ export default function Layout() {
     description: "管理你的页面",
   };
   return (
-    <div>
+    <div className="min-w-0 overflow-x-hidden">
       <SidebarProvider className="selection:bg-sky-300 selection:text-white  ">
         <AppSidebar />
-        <main className="w-full m-1 pr-3  ">
+        <main className="min-w-0 flex-1 overflow-x-hidden bg-white px-2 pb-4 md:px-3">
           <MainHeader title={header.title} desc={header.description} />
           {isMobile && (
-            <SidebarTrigger className="fixed right-4 bottom-4 z-40 border bg-background shadow-md" />
+            <SidebarTrigger className="fixed right-3 bottom-3 z-40 size-10 rounded-full border bg-background shadow-md" />
           )}
           <Outlet />
         </main>

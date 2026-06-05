@@ -18,5 +18,4 @@ public class OssProperties {
     private String accessKeyId;
     private String accessKeySecret;
     private String avatarPrefix = "knowflow/avatars";
-    private Long signedUrlTtlSeconds = 3600L;
 }

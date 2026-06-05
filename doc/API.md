@@ -10,7 +10,7 @@
 - `phone` 省略表示不修改；传入 `null` 或空字符串会清空联系方式；非空联系方式会 trim，长度必须为 5-32，只能包含数字、普通空格、`+`、`-` 和英文括号，并至少包含 5 个数字。
 - 只能修改当前 JWT 用户自己的资料，不接受 `userId` 修改其他用户。
 - 成功响应仍为统一 `UserResponse`，包含 `id`、`username`、`role`、`email`、`phone`、`avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource`、`avatarPresetId`。
-- `UserResponse` 不返回密码哈希、OSS object key、AccessKey、Secret、Authorization header 或永久 URL；上传头像只允许通过短期签名 `avatarUrl` 回显。
+- `UserResponse` 不返回密码哈希、OSS object key、AccessKey、Secret、Authorization header、OSS 鉴权查询参数、OSS 直连 URL 或永久 URL；上传头像只允许通过同源后端鉴权头像内容代理 `avatarUrl` 回显。
 - `avatarStorageConfigured` 只表示后端 OSS 头像上传配置是否完整，用于前端决定是否允许本地头像上传；它不表示用户是否已设置头像，也不暴露 endpoint、bucket 或密钥。
 
 ### POST /api/auth/me/avatar
@@ -18,6 +18,13 @@
 - OSS 未配置时，头像上传接口返回 `400`，错误提示为“头像上传需要先配置 OSS 存储。”。
 - 错误响应必须脱敏，不得包含 OSS endpoint、bucket、AccessKey、Secret、object key、Authorization header、模型 API Key 或其他敏感配置。
 - 即使 `avatarStorageConfigured=false`，用户仍可通过 `PATCH /api/auth/me/avatar-preset` 选择默认头像。
+
+### GET /api/auth/me/avatar/content
+
+- 用于读取当前 JWT 用户自己的上传头像内容，必须登录。
+- 前端应通过共享 axios 客户端请求该路径并渲染返回 blob，不直接把 `avatarUrl` 放入 `<img src>`。
+- 响应不重定向到 OSS，不返回 OSS object key、AccessKey、Secret、bucket、OSS 鉴权查询参数、OSS 直连 URL、Authorization header 或永久 URL。
+- 用户未上传头像时返回 `404`；token 无效或缺失时返回 `401`；读取失败时返回脱敏错误。
 
 失败情况：
 
@@ -217,7 +224,7 @@ Authorization: Bearer <accessToken>
   "role": "USER",
   "email": "wulong@example.com",
   "phone": "+86 138 0000 0000",
-  "avatarUrl": "https://oss-example.com/knowflow/avatars/2/avatar.webp?Expires=...",
+  "avatarUrl": "/api/auth/me/avatar/content?v=1780627099450",
   "avatarConfigured": true,
   "avatarStorageConfigured": true,
   "avatarSource": "UPLOAD",
@@ -230,8 +237,8 @@ Authorization: Bearer <accessToken>
 - 用于前端刷新页面后，从后端确认当前 token 对应的用户。
 - `email` 可以为 `null`，表示当前账号尚未设置邮箱。
 - `phone` 可以为 `null`，表示当前账号尚未设置联系方式；它只是 Settings 资料字段，不用于登录、唯一性校验、短信验证或通知发送。
-- 阶段 21 新增 `avatarUrl` 和 `avatarConfigured`；阶段 22 新增 `avatarSource` 和 `avatarPresetId`；阶段 23 新增 `phone` 和 `avatarStorageConfigured`。`avatarUrl` 仅用于上传头像的短期签名访问地址，可以为 `null`；`avatarConfigured` 表示用户是否已上传头像或选择默认头像；`avatarStorageConfigured` 表示 OSS 头像上传配置是否完整。
-- 响应不会返回 OSS object key、AccessKey、Secret、bucket 私密配置或永久 URL。签名 URL 过期后，前端应重新拉取 `/api/auth/me` 获取新的回显地址。
+- 阶段 21 新增 `avatarUrl` 和 `avatarConfigured`；阶段 22 新增 `avatarSource` 和 `avatarPresetId`；阶段 23 新增 `phone` 和 `avatarStorageConfigured`。`avatarUrl` 仅用于上传头像的同源后端鉴权内容代理地址，可以为 `null`；`avatarConfigured` 表示用户是否已上传头像或选择默认头像；`avatarStorageConfigured` 表示 OSS 头像上传配置是否完整。
+- 响应不会返回 OSS object key、AccessKey、Secret、bucket 私密配置、OSS 鉴权查询参数、OSS 直连 URL 或永久 URL。上传头像刷新回显时，前端应重新拉取 `/api/auth/me` 获取新的后端代理地址，再通过 axios 请求 blob。
 - 如果 token 无效、缺少 token，或 token 中的用户不存在，返回 `401`。
 
 失败情况：
@@ -273,7 +280,7 @@ Content-Type: application/json
   "role": "USER",
   "email": "wulong@example.com",
   "phone": "+86 138 0000 0000",
-  "avatarUrl": "https://oss-example.com/knowflow/avatars/2/avatar.webp?Expires=...",
+  "avatarUrl": "/api/auth/me/avatar/content?v=1780627099450",
   "avatarConfigured": true,
   "avatarStorageConfigured": true,
   "avatarSource": "UPLOAD",
@@ -330,7 +337,7 @@ Content-Type: multipart/form-data
   "role": "USER",
   "email": "wulong@example.com",
   "phone": "+86 138 0000 0000",
-  "avatarUrl": "https://oss-example.com/knowflow/avatars/2/avatar.webp?Expires=...",
+  "avatarUrl": "/api/auth/me/avatar/content?v=1780627099450",
   "avatarConfigured": true,
   "avatarStorageConfigured": true,
   "avatarSource": "UPLOAD",
@@ -343,7 +350,7 @@ Content-Type: multipart/form-data
 - 阶段 21 头像文件上传到阿里云 OSS，默认对象前缀为 `knowflow/avatars/{userId}/...`，数据库只保存 object key 和更新时间。
 - 后端会校验文件大小、Content-Type 和图片魔数，避免只靠前端或浏览器 MIME 判断。
 - OSS 未配置时，上传接口返回 `400` 和明确但脱敏的中文错误：“头像上传需要先配置 OSS 存储。”；`GET /api/auth/me` 仍正常返回，且 `avatarUrl` 为 `null`、`avatarStorageConfigured=false`。
-- 响应返回短期签名 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`，不返回 object key、AccessKey、Secret 或 bucket 私密配置。
+- 响应返回同源后端鉴权头像内容代理 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`，不返回 object key、AccessKey、Secret、bucket 私密配置、OSS 鉴权查询参数、OSS 直连 URL 或永久 URL。
 - 如果用户已有上传头像，上传新头像会覆盖数据库中的头像引用，并尽力删除旧 OSS 对象；删除失败不影响新头像保存。
 - 阶段 22 开始，上传头像会清空 `avatar_preset_id`，因此响应为 `avatarSource=UPLOAD`、`avatarPresetId=null`。
 
@@ -355,6 +362,43 @@ Content-Type: multipart/form-data
 | `401` | 未登录、token 无效，或 token 对应用户不存在 |
 | `400` | OSS 未配置；错误信息为“头像上传需要先配置 OSS 存储。”且必须脱敏 |
 | `500` | 上传失败或资料保存失败；错误信息必须脱敏 |
+
+### 读取当前用户头像内容
+
+| 项目 | 内容 |
+|---|---|
+| 请求方式 | `GET` |
+| 请求路径 | `/api/auth/me/avatar/content` |
+| 是否需要登录 | 是 |
+| 状态 | 阶段 23 已实现 |
+
+请求示例：
+
+```http
+GET /api/auth/me/avatar/content?v=1780627099450
+Authorization: Bearer <accessToken>
+```
+
+成功响应：
+
+- `200 OK`
+- `Content-Type` 为 `image/jpeg`、`image/png`、`image/webp` 或安全兜底 `application/octet-stream`
+- `Cache-Control: no-store`
+- 响应体为当前用户上传头像的二进制内容
+
+规则：
+
+- 该接口只读取当前 JWT 用户自己的头像 object key，不接收 object key、bucket、endpoint 或 userId 参数。
+- 该接口不重定向到 OSS，也不返回 OSS object key、AccessKey、Secret、bucket、OSS 鉴权查询参数、OSS 直连 URL、Authorization header 或永久 URL。
+- 前端应使用 axios 获取 blob 并通过 `URL.createObjectURL` 渲染；不得把 OSS 访问地址写入 DOM 或 storage。
+
+失败情况：
+
+| 状态码 | 原因 |
+|---|---|
+| `401` | 未登录、token 无效，或 token 对应用户不存在 |
+| `404` | 当前用户没有上传头像，或存储中无法读取该头像 |
+| `500` | 头像读取失败；错误信息必须脱敏 |
 
 ### 删除当前用户头像
 
@@ -380,8 +424,10 @@ Authorization: Bearer <accessToken>
   "username": "WuLong",
   "role": "USER",
   "email": "wulong@example.com",
+  "phone": null,
   "avatarUrl": null,
   "avatarConfigured": false,
+  "avatarStorageConfigured": true,
   "avatarSource": "NONE",
   "avatarPresetId": null
 }
@@ -432,8 +478,10 @@ Content-Type: application/json
   "username": "WuLong",
   "role": "USER",
   "email": "wulong@example.com",
+  "phone": null,
   "avatarUrl": null,
   "avatarConfigured": true,
+  "avatarStorageConfigured": true,
   "avatarSource": "PRESET",
   "avatarPresetId": "blue"
 }
@@ -943,6 +991,7 @@ Authorization: Bearer <accessToken>
 - 阶段 16 开始，后端会保存原始上传 bytes；如果解析成功，还会保存规范化后的原始文本。`source_bytes` 和 `source_text` 仅用于后端重新处理，不通过 API 返回。
 - 空白文本返回 `400`，文档记录保留为 `FAILED`，不保存 chunk。
 - 阶段 17 开始，上传会创建 `UPLOAD_INDEX` 处理任务。默认同步模式下成功响应通常为 `INDEXED`；如果开启后台处理，响应可能先返回 `PROCESSING`，进度以处理任务查询接口为准。
+- 同一知识库内不允许重复上传 trim 后大小写不敏感相同的 `originalFilename`（文件名+后缀整体比较，例如 `Report.PDF` 与 `report.pdf` 视为重复）；重复时返回 `409 Conflict`，错误消息为“当前知识库已存在同名文档，请重命名后再上传。”，且不创建文档记录或处理任务。
 - 如果读取或切片过程中失败，文档记录保留，`status` 更新为 `FAILED`，`errorMessage` 保存失败原因。
 
 成功响应示例：
@@ -973,6 +1022,7 @@ Authorization: Bearer <accessToken>
 | `401` | 未登录或 token 无效 |
 | `403` | 当前用户是 `VIEWER`，无权上传文档 |
 | `404` | 知识库不存在，或当前登录用户不是该知识库成员 |
+| `409` | 同一知识库已存在 trim 后大小写不敏感相同的 `originalFilename`；错误消息为“当前知识库已存在同名文档，请重命名后再上传。” |
 | `500` | 文件读取、解析或切片过程失败 |
 
 #### 获取知识库下的文档列表
@@ -1788,6 +1838,7 @@ Content-Type: application/json
 - Settings 页面用该接口验证当前用户的 OpenAI-compatible 配置是否真实可用。
 - 请求体允许传入本次表单里的 `baseUrl`、`apiKey`、`model`；字段为空时后端复用当前用户已保存的配置。
 - 该接口会真实调用模型供应商，但不会保存 API Key；保存仍由 `PATCH /api/settings/model` 完成。
+- 后端调用规范化后的 OpenAI-compatible `/chat/completions`；只要响应体可解析为 Chat Completion 且 `choices[0].message.content` 有内容，即视为测试成功。对于返回 JSON 但 Content-Type 非标准 JSON 的兼容网关，也按响应体内容解析。
 - 测试成功或失败都必须脱敏，不返回 API Key、完整 Authorization header、完整 Base URL、model 或供应商敏感原始错误。
 
 请求示例：
@@ -1973,7 +2024,7 @@ Content-Type: application/json
 
 ## 阶段 21/22/23 头像配置
 
-阶段 21 的头像上传使用阿里云 OSS。阶段 22 新增默认头像 preset，上传头像与默认头像互斥：上传头像只保存 object key，读取用户资料时动态生成短期签名 URL；默认头像只保存 preset id，由前端本地样式渲染。阶段 23 新增 `avatarStorageConfigured`，用于让 Settings 在 OSS 未配置时禁用本地头像上传并保留默认头像选择。
+阶段 21 的头像上传使用阿里云 OSS。阶段 22 新增默认头像 preset，上传头像与默认头像互斥：上传头像只保存 object key，读取用户资料时动态生成同源后端鉴权头像内容代理地址；默认头像只保存 preset id，由前端本地样式渲染。阶段 23 新增 `avatarStorageConfigured` 和 `GET /api/auth/me/avatar/content`，用于让 Settings 在 OSS 未配置时禁用本地头像上传并保留默认头像选择，同时避免浏览器接触 OSS object key、OSS 鉴权查询参数或 OSS 直连 URL。
 
 环境变量：
 
@@ -1984,13 +2035,12 @@ Content-Type: application/json
 | `KNOWFLOW_OSS_ACCESS_KEY_ID` | OSS AccessKey ID |
 | `KNOWFLOW_OSS_ACCESS_KEY_SECRET` | OSS AccessKey Secret |
 | `KNOWFLOW_OSS_AVATAR_PREFIX` | 头像对象前缀，默认 `knowflow/avatars` |
-| `KNOWFLOW_OSS_SIGNED_URL_TTL_SECONDS` | 头像签名 URL 有效期，默认 `3600` 秒 |
 
 安全规则：
 
 - 真实 OSS 密钥只能放在 `.env`、部署平台 Secret 或环境变量中，不提交到仓库。
-- API 响应不返回 OSS AccessKey、Secret、bucket 私密配置或可复用的永久 URL。
-- `avatarUrl` 是短期签名 URL，过期是正常行为；前端刷新用户资料即可获取新的签名 URL。
+- API 响应不返回 OSS AccessKey、Secret、bucket 私密配置、OSS object key、OSS 鉴权查询参数、OSS 直连 URL 或可复用的永久 URL。
+- `avatarUrl` 是同源后端鉴权头像内容代理路径；前端刷新用户资料即可获取新的回显地址，并通过 axios 请求 blob。
 - `avatarStorageConfigured=false` 时，前端可提示“头像上传需要先配置 OSS；当前可选择默认头像”；后端上传接口错误提示固定为“头像上传需要先配置 OSS 存储。”。
 - 即使多个项目共用同一个 bucket，也必须使用 `knowflow/avatars/{userId}/...` 这类独立前缀隔离对象路径。
 

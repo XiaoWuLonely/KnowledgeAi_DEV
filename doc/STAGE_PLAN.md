@@ -40,7 +40,8 @@
 | 阶段 20：后台任务中心与系统诊断                 | 已完成 | 新增全局文档处理任务中心、任务筛选、失败/取消任务重试、活跃任务取消、协作权限隔离和安全系统诊断接口；后端 105 个测试、前端构建和目标 ESLint 已通过。                                             |
 | 阶段 21：Chat SSE 流式输出、头像上传与 @ 文件上下文 | 已完成 | 新增 Chat SSE 边流边保存、OSS 头像上传、`@` 文件 mention、标题感知文档匹配和对应前后端接入；后端 112 个测试、前端构建和目标 ESLint 已通过。                                     |
 | 阶段 22：Settings/Chat 验收修复与协作规则升级   | 已完成 | Settings 资料编辑二次验收、默认头像持久化、Chat mention CLI 策略、乱码修复、点击沟通区域标记已读、移动端约束和多 thread/worktree 协作规则已完成；后端 118 个测试、前端构建和目标 ESLint 已通过。 |
-| 阶段 23：Settings 联系方式与头像存储状态契约同步 | 进行中 | `UserResponse` / `PATCH /api/auth/me` 扩展联系方式 `phone`，补充 `avatarStorageConfigured`，统一 OSS 未配置头像上传脱敏提示，并同步 Settings 联系方式展示和文档规则。 |
+| 阶段 23：Settings 联系方式与头像存储状态契约同步 | 已完成 | `UserResponse` / `PATCH /api/auth/me` 扩展联系方式 `phone`，补充 `avatarStorageConfigured`，头像上传改为后端鉴权内容代理和前端 blob 渲染；真实 OSS 上传、Settings 验收、后端 123 个测试和前端验证已通过。 |
+| 阶段 23 后续 Bug 修复与移动端收尾 | 已完成 | 修复 Chat 未读触发、流式自动滚动、输入框拖动高度和紧凑 header；Documents 同知识库同名上传返回 409；Settings 模型测试兼容 OpenAI-compatible 响应；补齐主导航页面移动端 smoke 约束。 |
 | 项目结构整理：前后端分目录 | 已完成 | 前端文件迁移到 `frontend/`，后端保留在 `backend/`，根目录作为协调仓库；根目录 `package.json` 已移除，Compose 前端 build context 指向 `./frontend`，运行日志和个人工具状态已从项目提交中排除。 |
 
 ## 项目结构整理：前后端分目录
@@ -92,7 +93,7 @@ docker compose up -d
 
 ### 目标
 
-阶段 23 聚焦 Settings 账号资料的联系方式和头像上传可用性契约同步。目标是让后端资料响应明确返回联系方式和 OSS 头像存储配置状态，前端在 Settings 展示联系方式，并在 OSS 未配置时禁止上传头像、保留默认头像选择，同时保证错误提示不泄露 OSS、模型或鉴权敏感配置。
+阶段 23 聚焦 Settings 账号资料的联系方式和头像上传可用性契约同步。目标是让后端资料响应明确返回联系方式和 OSS 头像存储配置状态，前端在 Settings 展示联系方式，并在 OSS 未配置时禁止上传头像、保留默认头像选择；OSS 已配置时完成真实头像上传和刷新回显，同时保证响应、UI、toast 和日志不泄露 OSS、模型或鉴权敏感配置。
 
 ### 范围
 
@@ -102,11 +103,12 @@ docker compose up -d
   - `PATCH /api/auth/me` 支持可选更新 `username` / `email` / `phone`，请求体至少包含一个字段。
   - `phone` 允许清空；非空值 trim 后长度为 5-32，且只能包含数字、普通空格、`+`、`-` 和英文括号，并至少包含 5 个数字。
   - OSS 未配置时，头像上传返回脱敏中文提示：“头像上传需要先配置 OSS 存储。”。
+  - 上传头像的 `avatarUrl` 改为同源后端鉴权内容代理 `/api/auth/me/avatar/content?v=...`，不向前端返回 OSS object key、OSS 直连 URL 或 OSS 鉴权查询参数。
 - 前端：
   - `frontend/src/api/auth.ts` 的 `UserResponse` 和 profile 更新请求类型同步 `phone`、`avatarStorageConfigured`。
   - Settings 账号资料区显示联系方式；编辑资料弹窗允许修改用户名、邮箱、联系方式和头像。
   - 当 `avatarStorageConfigured=false` 时禁用本地头像上传入口，并提示“头像上传需要先配置 OSS；当前可选择默认头像”。
-  - Header、Sidebar、Settings 继续统一使用上传头像短期签名 URL 或默认头像 preset，不持久化签名 URL。
+  - Header、Sidebar、Settings 继续统一使用上传头像后端代理 blob 或默认头像 preset；前端通过 axios 获取头像 blob 并渲染 `blob:` URL，不持久化头像回显地址。
 - 协作与验收规则：
   - 继续使用主对话作为项目经理/协调者的团队编排模式。
   - 复杂开发优先下发 Codex Thread/worktree 或 `AGENT_TEAM` worker，worker 思考/推理等级默认使用可用最高级（例如 `xhigh` / 最高级）。
@@ -115,9 +117,65 @@ docker compose up -d
 ### 当前验收口径
 
 - 后端响应不返回密码哈希、OSS object key、AccessKey、Secret、bucket 私密配置、Authorization header 或永久 URL。
+- 上传头像时，用户资料响应只返回同源后端头像内容代理；页面 DOM、storage、toast 和 console 不应出现 OSS object key、AccessKey、Secret、Authorization、OSS 鉴权查询参数或永久 URL。
 - `avatarStorageConfigured=false` 仅表示上传头像不可用，不影响选择默认头像 preset。
 - Settings 联系方式是资料字段，不用于登录、唯一性校验、短信验证或通知发送。
-- 本轮文档复核只同步核心文档和规则，不修改 `frontend/src/` 或 `backend/` 业务代码。
+
+### 已完成内容
+
+- 后端 `UserResponse`、`PATCH /api/auth/me` 和用户表映射已支持 `phone`。
+- 后端 `UserResponse` 已补充 `avatarStorageConfigured`，OSS 未配置时头像上传返回固定脱敏中文提示。
+- 后端新增当前用户头像内容代理 `GET /api/auth/me/avatar/content`；上传头像仍保存到 OSS，数据库仍只保存 object key，但前端不再接触 OSS 直连访问地址。
+- 前端 Settings 资料卡和“编辑资料”弹窗已支持联系方式展示、保存和清空。
+- 前端统一头像组件通过共享 axios 客户端读取头像 blob，Header、Sidebar、Settings 使用 `blob:` URL 回显上传头像，默认头像 preset 仍本地渲染。
+- `/Settings` 普通用户入口不展示“删除头像”按钮；用户可通过选择默认头像或重新上传替换头像。
+
+### 验收结果
+
+- OSS 本地 `.env` 已存在 `Knowledge_ALIYUN_OSS_*` 和 `KNOWFLOW_OSS_*` 两套变量且均非空；检查过程未打印密钥值，`.env` 不进入 Git。
+- `cd backend && .\mvnw.cmd -Dtest=Stage23ProfileContactTests test` 已通过：`3 tests, 0 failures, 0 errors`。
+- `cd backend && .\mvnw.cmd test` 已通过：`123 tests, 0 failures, 0 errors`。
+- `/Settings` Browser 验收已通过：资料卡只读并显示联系方式；编辑弹窗可修改用户名、邮箱和联系方式；联系方式可保存并清空；默认头像 preset 可保存；真实 OSS 头像可上传并刷新回显；页面不展示“删除头像”按钮；DOM/text/console 未发现 OSS object key、AccessKey、Secret、Authorization、OSS 鉴权查询参数或永久 URL。
+- `cd frontend && pnpm exec eslint src/pages/Settings.tsx src/api/auth.ts src/store/auth.ts src/components/settings src/components/chat src/components/chat-page src/components/slider-sidebar.tsx src/components/MainHeader.tsx src/components/user-avatar.tsx` 已通过。
+- `cd frontend && pnpm build` 已通过，仅保留既有 Vite 大 chunk 提示。
+- `cd frontend && rg -n "fetch\(" src` 仅匹配 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
+- 指定 Chat/Settings 范围 mojibake 残留检查无匹配。
+- `doc/STAGE_PLAN.md` 和 `doc/PROJECT.md` 真实文件内容未发现常见中文编码异常残留；PowerShell 显示异常不作为正文乱码证据。
+
+## 阶段 23 后续 Bug 修复与移动端收尾
+
+### 目标
+
+本轮在阶段 23 验收后处理 Chat、Documents、Settings 和移动端体验反馈：让 Chat 流式输出不再抢夺用户上滚位置，未读会话在真实交互时及时标记已读，输入框改为可拖动高度；让同一知识库内重复文件名上传在前后端都被明确拒绝；让 Settings 模型测试兼容常见 OpenAI-compatible 网关响应，并继续保持敏感信息脱敏；同时补齐主导航页面移动端基础布局约束。
+
+### 已完成内容
+
+- Chat：
+  - `/Chat/{sessionId}` 消息滚动区在 `scroll`、`pointerdown/click` 和焦点进入时触发当前未读会话标记已读，并复用既有防抖和进行中请求保护。
+  - 流式 `assistant_message`、`delta`、`sources`、`done` 只在用户仍贴近底部或刚发送问题时自动跟随；用户上滚后不再被强制拉回底部，点击“回到底部”或发送新问题才恢复跟随。
+  - 删除“流式生成 · 会结合当前会话上下文”文案，缩小 Chat header 高度。
+  - `ChatComposer` 删除旧右侧放大/缩小按钮，改为顶部拖拽手柄调整输入框高度；高度仅在当前页面生命周期内保留，不写 `localStorage`。
+- Documents：
+  - 前端上传前按当前知识库 `documents[].originalFilename` 和同一批次文件名做 trim + 大小写不敏感重复校验；重复项 toast 提示“当前知识库已存在同名文档，请重命名后再上传。”，有效文件继续上传。
+  - 后端上传接口在权限和基础校验后、创建文档和任务前检查同一 `knowledge_base_id` 下是否已有同名 `original_filename`；重复时返回 `409 Conflict`，不创建 document 行，也不创建 processing job。
+- Settings：
+  - 模型测试允许复用已保存 API Key；请求体中的临时 Base URL/API Key/Model 优先于已保存配置且不覆盖保存配置。
+  - 模型测试兼容 OpenAI-compatible Chat Completion JSON 响应，包括 JSON body 但 Content-Type 非标准 JSON 的网关；失败消息继续脱敏，不暴露 Base URL、API Key、Authorization、model 或供应商原始敏感错误。
+- 移动端：
+  - `SliderLayout`、`MainHeader`、Chat、Documents、Settings 相关容器补齐 `min-w-0`、`overflow-x-hidden`、单列/弹窗尺寸约束和小屏触控布局。
+  - 移动端 smoke 范围包括 `/`、`/KnowledgeBases`、`/Documents`、`/Jobs`、`/Chat`、`/Settings`、`/login`。
+
+### 验收结果
+
+- `cd backend && .\mvnw.cmd -Dtest=Stage11DocumentProcessingTests test` 已通过，覆盖同一知识库重复文件名 `409`、不同知识库允许同名、重复失败不新增文档且不创建处理任务。
+- `cd backend && .\mvnw.cmd -Dtest=Stage13UserModelAndChatTests test` 已通过，覆盖模型测试成功、复用保存 Key、请求体优先和错误脱敏。
+- `cd backend && .\mvnw.cmd test` 已通过：`127 tests, 0 failures, 0 errors`。
+- `Stage20DocumentTaskCenterTests` 的时间字符串脆弱断言已修正为解析 JSON job id 后断言隐藏任务不存在，专项测试已通过。
+- `cd frontend && pnpm exec eslint src/pages/Chat.tsx src/pages/Documents.tsx src/pages/Settings.tsx src/components/chat src/components/chat-page src/components/documents src/components/settings src/components/slider-layout.tsx src/components/slider-sidebar.tsx src/components/MainHeader.tsx` 已通过。
+- `cd frontend && pnpm build` 已通过，仅保留既有 Vite 大 chunk 提示。
+- `cd frontend && rg -n "fetch\(" src` 仅匹配 `frontend/src/api/chat-stream.ts` 的 POST SSE 例外。
+- 指定 Chat/Documents/Settings 范围内，“流式生成 · 会结合当前会话上下文”、旧输入框放大状态和常见 mojibake 检查无匹配。
+- Browser 验收覆盖 `/Chat/138`、`/Documents/299`、`/Settings` 和移动端 smoke；结果以本轮最终汇总为准。
 
 ## 阶段 22：Settings/Chat 验收修复与协作规则升级
 
@@ -152,8 +210,8 @@ docker compose up -d
 - 新增 `V17__add_user_avatar_preset.sql`、`UpdateAvatarPresetRequest` 和 `Stage22DefaultAvatarTests`。
 - `AuthService`、`AuthController`、`UserRepository`、`UserResponse` 已支持默认头像 preset 和头像来源字段。
 - `frontend/src/api/auth.ts` 新增 `DefaultAvatarPresetId`、`AvatarSource` 和 `selectCurrentUserAvatarPreset`。
-- `frontend/src/store/auth.ts` 运行时保留短期 `avatarUrl`，持久化时剔除签名 URL。
-- 主布局挂载时重新请求 `/api/auth/me`，刷新任意已登录页面后可重新获取上传头像短期签名 URL。
+- `frontend/src/store/auth.ts` 运行时保留后端返回的 `avatarUrl`，持久化时剔除头像回显地址。
+- 主布局挂载时重新请求 `/api/auth/me`，刷新任意已登录页面后可重新获取上传头像回显地址。
 - `frontend/src/components/user-avatar.tsx` 新增 8 个默认头像 preset、`UserAvatar` 和 `AvatarPresetPicker`。
 - Settings 账号资料卡和编辑资料弹窗按二次验收恢复用户名、邮箱和头像编辑；角色、时区仍只读，语言入口移除。
 - Header、Sidebar、Settings 统一头像渲染。
@@ -174,7 +232,7 @@ docker compose up -d
 
 ### 目标
 
-阶段 21 把 Chat 从“后台异步生成后轮询结果”升级为可感知的 SSE 流式输出，同时补齐用户头像上传和文件级上下文选择能力。目标是让用户发送问题后能看到回答逐步出现，刷新页面仍能看到已生成内容；让用户在 Settings 上传头像并通过签名 URL 回显；让 Chat 支持通过 `@` 明确指定当前知识库文档，并修复只按文件标题提问时检索不到指定文档的问题。
+阶段 21 把 Chat 从“后台异步生成后轮询结果”升级为可感知的 SSE 流式输出，同时补齐用户头像上传和文件级上下文选择能力。目标是让用户发送问题后能看到回答逐步出现，刷新页面仍能看到已生成内容；让用户在 Settings 上传头像并通过后端返回的头像地址回显；让 Chat 支持通过 `@` 明确指定当前知识库文档，并修复只按文件标题提问时检索不到指定文档的问题。
 
 ### 范围
 
@@ -201,7 +259,7 @@ docker compose up -d
 
 ### 已完成内容
 
-- 后端新增 OSS 头像配置和头像存储服务，支持 JPEG/PNG/WebP、2MB 上限、图片魔数校验、短期签名 URL 回显和头像删除。
+- 后端新增 OSS 头像配置和头像存储服务，支持 JPEG/PNG/WebP、2MB 上限、图片魔数校验、头像回显和头像删除。
 - 后端 `UserResponse` 新增 `avatarUrl`、`avatarConfigured`，`GET/PATCH /api/auth/me`、头像上传/删除均返回统一用户资料响应。
 - 后端新增 Chat 流式接口和 OpenAI-compatible SSE 解析，delta 会持续更新同一条 `ASSISTANT` 消息。
 - 后端新增 `ChatDocumentContextService`，支持显式 `mentionedDocumentIds` 校验、当前知识库文档限定检索和文件标题启发式匹配。
@@ -656,7 +714,7 @@ docker compose up -d
 
 ## 阶段 21：Chat SSE 流式输出、头像上传与 @ 文件上下文
 
-新增 SSE 流式问答、边流边保存、头像上传到 OSS、短期签名头像回显、`@` 当前知识库文档上下文和标题感知文档匹配。
+新增 SSE 流式问答、边流边保存、头像上传到 OSS、头像回显、`@` 当前知识库文档上下文和标题感知文档匹配。
 
 ## 暂不优先做
 

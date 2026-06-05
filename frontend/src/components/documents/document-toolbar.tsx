@@ -45,13 +45,13 @@ export function DocumentToolbar({
   onUploadClick,
 }: DocumentToolbarProps) {
   return (
-    <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-10 min-w-[230px] cursor-pointer items-center justify-between gap-3 rounded-[5px] border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+              className="flex h-10 w-full min-w-0 cursor-pointer items-center justify-between gap-3 rounded-[5px] border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm transition-colors hover:bg-slate-50 sm:w-fit sm:min-w-[230px]"
             >
               <span className="flex min-w-0 items-center gap-3">
                 <span className="flex size-5 items-center justify-center rounded-[3px] border border-blue-200 bg-blue-50 text-blue-600">
@@ -79,22 +79,28 @@ export function DocumentToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Tabs
-          value={typeTab}
-          onValueChange={(value) => onTypeTabChange(value as TypeTab)}
-        >
-          <TabsList variant="line">
-            {typeFilters.map((filter) => (
-              <TabsTrigger
-                key={filter}
-                value={filter}
-                className="px-4 text-xs font-medium tracking-normal normal-case text-slate-600 data-active:text-blue-600 data-active:after:bg-blue-600"
-              >
-                {filter}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="min-w-0 max-w-full pb-1">
+          <Tabs
+            value={typeTab}
+            onValueChange={(value) => onTypeTabChange(value as TypeTab)}
+            className="w-full"
+          >
+            <TabsList
+              variant="line"
+              className="h-auto min-h-10 w-full flex-wrap justify-start gap-y-1"
+            >
+              {typeFilters.map((filter) => (
+                <TabsTrigger
+                  key={filter}
+                  value={filter}
+                  className="h-9 px-2 text-xs font-medium tracking-normal normal-case text-slate-600 data-active:text-blue-600 data-active:after:bg-blue-600 sm:px-4"
+                >
+                  {filter}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
 
         <SegmentedFilter
           items={statusFilters}

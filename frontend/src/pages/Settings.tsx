@@ -442,7 +442,7 @@ export default function Settings() {
       }
 
       toast.error(
-        getErrorMessage(error, "模型配置保存失败，请检查配置后重试。"),
+        getSafeErrorMessage(error, "模型配置保存失败，请检查配置后重试。"),
       );
       return false;
     } finally {
@@ -562,7 +562,7 @@ export default function Settings() {
       </div>
 
       <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <AlertDialogContent className="rounded-[8px]">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-[8px] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-sans text-lg normal-case tracking-normal">
               确认退出登录？

@@ -4,25 +4,26 @@ KnowFlow AI 是一个 RAG-based 智能知识库问答平台。用户可以上传
 
 ## 当前状态
 
-项目当前已完成 **阶段 22：Settings/Chat 验收修复与协作规则升级**，阶段 23 的 Settings 联系方式与头像存储状态契约同步正在进行。
+项目当前已完成 **阶段 23：Settings 联系方式与 OSS 头像上传验收收尾**，并完成 Chat、Documents、Settings 与移动端体验的后续 Bug 修复。
 
 已完成的核心能力：
 
 - 用户认证：注册、登录、JWT 鉴权、重置密码、当前用户资料；`PATCH /api/auth/me` 支持可选更新用户名、邮箱和联系方式。
 - 知识库管理：创建、编辑、删除、精选标记、主题色、用户隔离。
 - 协作权限：单个知识库成员共享，支持 `OWNER` / `EDITOR` / `VIEWER` 权限。
-- 文档处理：支持 `.txt`、`.md`、`.markdown`、文本型 `.pdf`、`.docx`、`.html`、`.htm` 上传解析、切片和索引。
+- 文档处理：支持 `.txt`、`.md`、`.markdown`、文本型 `.pdf`、`.docx`、`.html`、`.htm` 上传解析、切片和索引；同一知识库内禁止重复上传大小写不敏感相同的“文件名+后缀”。
 - 全文检索：基于 PostgreSQL 全文检索返回相关片段、相关度分数和引用来源。
 - 语义/混合检索：配置 `KNOWFLOW_AI_EMBEDDING_MODEL` 后，文档处理会尝试写入 embedding，Search 和 Chat 以全文分、语义分、混合分排序；未配置或失败时自动降级全文检索。
 - RAG 问答：基于检索结果构建 Prompt，调用 OpenAI-compatible 模型生成回答并保存引用来源。
 - Chat 流式输出：`POST /api/chat/sessions/{sessionId}/messages/stream` 使用 SSE 边生成边保存，刷新页面可看到已生成内容。
 - 文件上下文：Chat 输入框支持 `@` 当前知识库已索引文档，发送时传 `mentionedDocumentIds`；未显式 mention 时，后端会按用户问题中的文件标题做启发式匹配。
 - 用户级模型配置：每个用户可在 Settings 保存 Base URL、API Key、模型和超时时间；API Key 后端加密保存、脱敏返回。
-- 用户头像：Settings 支持上传头像到阿里云 OSS 或选择默认头像 preset，接口只返回短期签名 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`，不返回 OSS object key 或密钥；OSS 未配置时头像上传返回“头像上传需要先配置 OSS 存储。”。
+- 用户头像：Settings 支持上传头像到阿里云 OSS 或选择默认头像 preset，接口只返回后端鉴权头像代理 `avatarUrl`、`avatarConfigured`、`avatarStorageConfigured`、`avatarSource` 和 `avatarPresetId`，不返回 OSS object key、OSS 鉴权查询参数或密钥；前端用 axios 取头像 blob 后渲染；OSS 未配置时头像上传返回“头像上传需要先配置 OSS 存储。”。
 - Settings 账号资料：展示并编辑用户名、邮箱、联系方式和头像；OSS 未配置时可选择默认头像。
-- Settings 模型测试：支持用当前表单或已保存配置测试真实模型连接。
+- Settings 模型测试：支持用当前表单或已保存配置测试真实 OpenAI-compatible 模型连接；API Key 和供应商错误保持脱敏。
 - 多会话协同：会话创建、重命名、删除、置顶、取消置顶、未读会话、后台生成状态。
-- Chat 体验：发送时可选择模型，空检索仍可调用用户模型回答但 `sources` 保持为空；右侧引用来源跟随选中回答展示。
+- Chat 体验：发送时可选择模型，空检索仍可调用用户模型回答但 `sources` 保持为空；右侧引用来源跟随选中回答展示；流式输出期间用户向上滚动不会被强制拉回底部，输入框支持拖动调整高度。
+- 移动端体验：主导航页面已补齐基础小屏布局约束，降低横向溢出、控件重叠和弹窗撑出视口风险。
 - 使用统计：侧边栏展示今日交谈次数，按当前用户和时区统计。
 - Docker：根目录 `compose.yaml` 只管理本地 PostgreSQL；后端在 `backend/` 用 Maven 启动，前端在 `frontend/` 用 Vite 启动。
 
@@ -205,7 +206,6 @@ cd backend
 | `KNOWFLOW_OSS_ACCESS_KEY_ID` | 空 | 可选 OSS AccessKey ID。不要提交真实密钥。 |
 | `KNOWFLOW_OSS_ACCESS_KEY_SECRET` | 空 | 可选 OSS AccessKey Secret。不要提交真实密钥。 |
 | `KNOWFLOW_OSS_AVATAR_PREFIX` | `knowflow/avatars` | 头像对象前缀，用于和其他项目隔离路径。 |
-| `KNOWFLOW_OSS_SIGNED_URL_TTL_SECONDS` | `3600` | 头像签名 URL 有效期。 |
 | `KNOWFLOW_DB_MAX_POOL_SIZE` | `10` | Docker 后端数据库连接池最大连接数。 |
 | `KNOWFLOW_DB_MIN_IDLE` | `1` | Docker 后端数据库连接池最小空闲连接数。 |
 

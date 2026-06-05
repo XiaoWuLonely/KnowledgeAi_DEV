@@ -109,8 +109,8 @@ public interface UserRepository {
      * @param userId current user id
      * @param avatarObjectKey OSS object key, never a public URL
      * @return updated row count
-     * @Desc Avatar upload stores only object key; signed URLs are generated while reading
-     * user profile so the frontend never persists permanent storage addresses.
+     * @Desc Avatar upload stores only object key; user profile returns a backend proxy URL
+     * so the frontend never receives permanent storage addresses or signed query parameters.
      */
     @Update("""
                 update users

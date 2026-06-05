@@ -163,6 +163,48 @@ class Stage11DocumentProcessingTests {
     }
 
     @Test
+    void duplicateFilenameInSameKnowledgeBaseReturns409WithoutCreatingJob() throws Exception {
+        Long userId = createUser("stage11_duplicate_filename");
+        String token = loginAndGetToken("stage11_duplicate_filename");
+        Long knowledgeBaseId = createKnowledgeBase(userId, "Stage11 Duplicate KB");
+
+        mockMvc.perform(multipart("/api/knowledge-bases/{knowledgeBaseId}/documents", knowledgeBaseId)
+                        .file(new MockMultipartFile("file", "Report.PDF", "application/pdf", textPdfBytes("Stage11 first duplicate marker")))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(multipart("/api/knowledge-bases/{knowledgeBaseId}/documents", knowledgeBaseId)
+                        .file(new MockMultipartFile("file", " report.pdf ", "application/pdf", textPdfBytes("Stage11 second duplicate marker")))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("当前知识库已存在同名文档，请重命名后再上传。"));
+
+        assertThat(countDocumentsByNormalizedFilename(knowledgeBaseId, "report.pdf")).isEqualTo(1);
+        assertThat(countProcessingJobsForKnowledgeBase(knowledgeBaseId)).isEqualTo(1);
+    }
+
+    @Test
+    void sameFilenameIsAllowedInDifferentKnowledgeBases() throws Exception {
+        Long userId = createUser("stage11_duplicate_other_kb");
+        String token = loginAndGetToken("stage11_duplicate_other_kb");
+        Long firstKnowledgeBaseId = createKnowledgeBase(userId, "Stage11 Duplicate First KB");
+        Long secondKnowledgeBaseId = createKnowledgeBase(userId, "Stage11 Duplicate Second KB");
+
+        mockMvc.perform(multipart("/api/knowledge-bases/{knowledgeBaseId}/documents", firstKnowledgeBaseId)
+                        .file(new MockMultipartFile("file", "shared.txt", "text/plain", "Stage11 shared first".getBytes(StandardCharsets.UTF_8)))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(multipart("/api/knowledge-bases/{knowledgeBaseId}/documents", secondKnowledgeBaseId)
+                        .file(new MockMultipartFile("file", "SHARED.TXT", "text/plain", "Stage11 shared second".getBytes(StandardCharsets.UTF_8)))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isCreated());
+
+        assertThat(countDocumentsByNormalizedFilename(firstKnowledgeBaseId, "shared.txt")).isEqualTo(1);
+        assertThat(countDocumentsByNormalizedFilename(secondKnowledgeBaseId, "shared.txt")).isEqualTo(1);
+    }
+
+    @Test
     void docxTableTextIsExtractedIntoChunks() throws Exception {
         Long userId = createUser("stage11_docx_table");
         String token = loginAndGetToken("stage11_docx_table");
@@ -379,6 +421,28 @@ class Stage11DocumentProcessingTests {
                 Long.class,
                 name,
                 userId);
+    }
+
+    private Integer countDocumentsByNormalizedFilename(Long knowledgeBaseId, String filename) {
+        return jdbcTemplate.queryForObject("""
+                        select count(*)
+                        from documents
+                        where knowledge_base_id = ?
+                          and lower(trim(original_filename)) = lower(trim(?))
+                        """,
+                Integer.class,
+                knowledgeBaseId,
+                filename);
+    }
+
+    private Integer countProcessingJobsForKnowledgeBase(Long knowledgeBaseId) {
+        return jdbcTemplate.queryForObject("""
+                        select count(*)
+                        from document_processing_jobs
+                        where knowledge_base_id = ?
+                        """,
+                Integer.class,
+                knowledgeBaseId);
     }
 
     private void assertFailedDocument(Long userId, String filename, String expectedErrorMessage) {

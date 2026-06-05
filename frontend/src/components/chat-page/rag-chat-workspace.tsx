@@ -16,7 +16,6 @@ import {
   Pin,
   PinOff,
   RefreshCw,
-  SearchCheck,
   Settings2,
   Trash2,
   TriangleAlert,
@@ -113,7 +112,8 @@ import { useChatStatusStore } from "@/store/chat-status";
 const DEFAULT_CHAT_LIMIT = 5;
 const SOURCE_PREVIEW_LENGTH = 180;
 const POLL_INTERVAL_MS = 2500;
-const AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 32;
+const USER_SCROLL_DIRECTION_DEADBAND = 4;
 const SCROLL_TO_BOTTOM_BUTTON_PAGE_DISTANCE = 3;
 const SCROLL_TO_BOTTOM_ANIMATION_MS = 420;
 type MessageScrollMode = "force" | "if-near-bottom";
@@ -818,6 +818,7 @@ export function RagChatWorkspace({
   const cancellingStreamSessionIdRef = useRef<number | null>(null);
   const markReadTimerRef = useRef<number | null>(null);
   const markingReadSessionIdsRef = useRef<Set<number>>(new Set());
+  const markActiveSessionReadRef = useRef<() => void>(() => {});
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const autoFollowEnabledRef = useRef(true);
   const lastScrollTopRef = useRef(0);
@@ -996,7 +997,7 @@ export function RagChatWorkspace({
 
   const syncMessageScrollState = useCallback(
     (messageScroll: HTMLDivElement, options?: { forceAutoFollow?: boolean }) => {
-      if (options?.forceAutoFollow || isMessageScrollNearBottom(messageScroll)) {
+      if (options?.forceAutoFollow) {
         autoFollowEnabledRef.current = true;
       }
 
@@ -1039,10 +1040,7 @@ export function RagChatWorkspace({
       autoFollowEnabledRef.current = true;
     }
 
-    if (
-      mode === "if-near-bottom" &&
-      (!autoFollowEnabledRef.current || !isMessageScrollNearBottom(messageScroll))
-    ) {
+    if (mode === "if-near-bottom" && !autoFollowEnabledRef.current) {
       syncMessageScrollState(messageScroll);
       return;
     }
@@ -1087,7 +1085,9 @@ export function RagChatWorkspace({
       return;
     }
 
-    if (currentScrollTop < lastScrollTopRef.current) {
+    markActiveSessionReadRef.current();
+
+    if (currentScrollTop < lastScrollTopRef.current - USER_SCROLL_DIRECTION_DEADBAND) {
       autoFollowEnabledRef.current = false;
     } else if (isMessageScrollNearBottom(messageScroll)) {
       autoFollowEnabledRef.current = true;
@@ -1555,6 +1555,10 @@ export function RagChatWorkspace({
         });
     }, 250);
   }, [markSessionReadSilently]);
+
+  useEffect(() => {
+    markActiveSessionReadRef.current = markActiveSessionRead;
+  }, [markActiveSessionRead]);
 
   const handleOpenSession = useCallback(
     async (sessionId: number) => {
@@ -2166,12 +2170,12 @@ export function RagChatWorkspace({
       className={cn(
         isEmbedded
           ? "flex h-full min-h-0 flex-col overflow-hidden bg-white text-slate-900"
-          : "grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(9rem,0.32fr)_minmax(0,1fr)_minmax(9rem,0.32fr)] overflow-hidden bg-white text-slate-900 xl:grid-cols-[240px_minmax(0,1fr)_320px] xl:grid-rows-1",
+          : "grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(8rem,0.28fr)_minmax(0,1fr)_minmax(8rem,0.28fr)] overflow-hidden bg-white text-slate-900 xl:grid-cols-[240px_minmax(0,1fr)_320px] xl:grid-rows-1",
         className,
       )}
     >
       {!isEmbedded && (
-      <aside className="flex min-h-0 flex-col border-b border-slate-200 bg-white xl:border-r xl:border-b-0">
+      <aside className="flex min-h-0 min-w-0 flex-col border-b border-slate-200 bg-white xl:border-r xl:border-b-0">
         <div className="shrink-0 border-b border-slate-100 px-4 py-4">
           {canChooseKnowledgeBase && (
             <div className="mb-3">
@@ -2276,12 +2280,12 @@ export function RagChatWorkspace({
 
       <main
         className={cn(
-          "flex min-h-0 flex-col bg-white",
+          "flex min-h-0 min-w-0 flex-col bg-white",
           !isEmbedded && "border-b border-slate-200 xl:border-b-0",
           isEmbedded && "flex-1",
         )}
       >
-        <header className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-slate-200 px-4 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <header className="flex min-h-12 shrink-0 flex-col gap-2 border-b border-slate-200 px-4 py-2 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="truncate text-sm font-semibold text-slate-900">
@@ -2305,8 +2309,8 @@ export function RagChatWorkspace({
                 : "当前没有选中会话，首次提问会自动创建。"}
             </p>
           </div>
+          {isEmbedded && (
           <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500">
-            {isEmbedded && (
               <Button
                 type="button"
                 variant="outline"
@@ -2321,10 +2325,8 @@ export function RagChatWorkspace({
                 )}
                 新建会话
               </Button>
-            )}
-            <SearchCheck className="size-4" />
-            流式生成 · 会结合当前会话上下文
           </div>
+            )}
         </header>
 
         {errorMessage && (
@@ -2340,9 +2342,12 @@ export function RagChatWorkspace({
         <div className="relative min-h-0 flex-1 bg-white">
           <div
             ref={messageScrollRef}
-            className="h-full overflow-auto px-3 py-4 lg:px-6 lg:py-5"
+            className="h-full overflow-auto px-3 py-4 outline-none lg:px-6 lg:py-5"
+            tabIndex={0}
             onScroll={handleMessageScroll}
+            onPointerDown={markActiveSessionRead}
             onClick={markActiveSessionRead}
+            onFocusCapture={markActiveSessionRead}
           >
             <div className="mx-auto flex max-w-[820px] flex-col gap-5">
             {isLoadingMessages ? (
@@ -2479,7 +2484,7 @@ export function RagChatWorkspace({
       </main>
 
       {!isEmbedded && (
-      <aside className="flex min-h-0 flex-col bg-white xl:border-l xl:border-slate-200">
+      <aside className="flex min-h-0 min-w-0 flex-col bg-white xl:border-l xl:border-slate-200">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="truncate text-base font-semibold text-slate-900">
@@ -2538,7 +2543,10 @@ export function RagChatWorkspace({
           }
         }}
       >
-        <DialogContent className="rounded-[8px]" showCloseButton={false}>
+        <DialogContent
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-[8px] sm:max-w-lg"
+          showCloseButton={false}
+        >
           <form className="flex flex-col gap-5" onSubmit={handleRenameSubmit}>
             <DialogHeader>
               <DialogTitle className="text-base tracking-normal normal-case">
@@ -2605,7 +2613,7 @@ export function RagChatWorkspace({
           }
         }}
       >
-        <AlertDialogContent className="rounded-[8px]">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-[8px] sm:max-w-lg">
           <AlertDialogHeader>
               <AlertDialogTitle className="text-base tracking-normal normal-case">
               删除会话

@@ -66,18 +66,18 @@ const MainHeader = ({ title, desc }: MainHeaderProps) => {
 
   return (
     <>
-      <div className="flex h-18 w-full items-center justify-between border-b-2 border-gray-200 pl-2">
-        <div className="min-w-0">
-          <div className="truncate text-[clamp(1.125rem,1.5vw,1.5rem)]">
+      <div className="flex min-h-14 w-full min-w-0 items-center justify-between gap-2 border-b border-gray-200 px-1 py-2 sm:min-h-16 sm:px-2">
+        <div className="min-w-0 flex-1 pr-1">
+          <div className="truncate text-lg font-semibold leading-6 text-slate-900 sm:text-xl">
             {title}
           </div>
-          <div className="truncate text-[clamp(0.575rem,.9vw,1.125rem)] text-gray-500">
+          <div className="truncate text-xs leading-5 text-gray-500 sm:text-sm">
             {desc}
           </div>
         </div>
         <div
           className={cn(
-            "flex items-center gap-5 text-[clamp(0.875rem,1.25vw,1.25rem)]",
+            "flex min-w-0 shrink-0 items-center gap-4 text-sm",
             isMobile && "gap-2",
           )}
         >
@@ -101,7 +101,7 @@ const MainHeader = ({ title, desc }: MainHeaderProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex min-w-0 items-center gap-2 px-2 text-[clamp(0.875rem,1.25vw,1.25rem)]"
+                className="flex min-w-0 items-center gap-2 px-1.5 text-sm sm:px-2"
               >
                 <UserAvatar
                   username={displayName}
@@ -111,8 +111,10 @@ const MainHeader = ({ title, desc }: MainHeaderProps) => {
                   size="sm"
                 />
                 <span className="flex min-w-0 items-center gap-1">
-                  <span className="max-w-24 truncate">{displayName}</span>
-                  <span className="shrink-0">Workspace</span>
+                  <span className="max-w-[5.5rem] truncate sm:max-w-24">
+                    {displayName}
+                  </span>
+                  <span className="hidden shrink-0 sm:inline">Workspace</span>
                 </span>
                 <span
                   className={cn(

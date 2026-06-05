@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -132,11 +133,12 @@ class Stage22DefaultAvatarTests {
                 .andExpect(jsonPath("$.avatarSource").value("PRESET"))
                 .andExpect(jsonPath("$.avatarPresetId").value("rose"));
 
+        byte[] avatarBytes = new byte[]{0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50};
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "avatar.webp",
                 "image/webp",
-                new byte[]{0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50}
+                avatarBytes
         );
         mockMvc.perform(multipart("/api/auth/me/avatar")
                         .file(file)
@@ -145,11 +147,19 @@ class Stage22DefaultAvatarTests {
                 .andExpect(jsonPath("$.avatarConfigured").value(true))
                 .andExpect(jsonPath("$.avatarSource").value("UPLOAD"))
                 .andExpect(jsonPath("$.avatarPresetId").doesNotExist())
-                .andExpect(jsonPath("$.avatarUrl").value(containsString("https://signed.example.test/")));
+                .andExpect(jsonPath("$.avatarUrl").value(containsString("/api/auth/me/avatar/content")))
+                .andExpect(content().string(not(containsString("object-key"))))
+                .andExpect(content().string(not(containsString("OSSAccessKeyId"))));
 
         String uploadedObjectKey = readAvatarObjectKey("stage22_avatar_switch_owner");
         assertThat(uploadedObjectKey).contains("object-key");
         assertThat(readAvatarPresetId("stage22_avatar_switch_owner")).isNull();
+
+        mockMvc.perform(get("/api/auth/me/avatar/content")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/webp"))
+                .andExpect(content().bytes(avatarBytes));
 
         mockMvc.perform(patch("/api/auth/me/avatar-preset")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -339,25 +349,37 @@ class Stage22DefaultAvatarTests {
 
     static class FakeAvatarStorageService implements AvatarStorageService {
         private final List<String> deletedObjectKeys = new CopyOnWriteArrayList<>();
+        private final Map<String, AvatarObject> objects = new ConcurrentHashMap<>();
         private volatile int uploadSequence = 0;
 
         @Override
         public String upload(Long userId, MultipartFile file) {
             validateFile(file);
             uploadSequence += 1;
-            return "knowflow/avatars/%d/object-key-%d.webp".formatted(userId, uploadSequence);
+            String objectKey = "knowflow/avatars/%d/object-key-%d.webp".formatted(userId, uploadSequence);
+            try {
+                objects.put(objectKey, new AvatarObject(file.getBytes(), file.getContentType()));
+            } catch (IOException exception) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "avatar file type is not supported");
+            }
+            return objectKey;
         }
 
         @Override
         public void delete(String objectKey) {
             if (objectKey != null) {
                 deletedObjectKeys.add(objectKey);
+                objects.remove(objectKey);
             }
         }
 
         @Override
-        public String createSignedUrl(String objectKey) {
-            return objectKey == null ? null : "https://signed.example.test/avatar-token-" + Math.abs(objectKey.hashCode());
+        public AvatarObject read(String objectKey) {
+            AvatarObject object = objects.get(objectKey);
+            if (object == null) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Avatar not found");
+            }
+            return object;
         }
 
         @Override
@@ -367,6 +389,7 @@ class Stage22DefaultAvatarTests {
 
         void reset() {
             deletedObjectKeys.clear();
+            objects.clear();
             uploadSequence = 0;
         }
 

@@ -171,7 +171,7 @@ export function DocumentTable({
 
   return (
     <section className="overflow-hidden rounded-[6px] border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col divide-y divide-slate-100 md:hidden">
+        <div className="flex flex-col divide-y divide-slate-100 lg:hidden">
           {documents.length > 0 ? (
             documents.map((doc) => (
               <article
@@ -305,7 +305,7 @@ export function DocumentTable({
           )}
         </div>
 
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[920px] border-collapse text-left text-sm">
             <thead className="bg-white text-slate-600">
               <tr className="border-b border-slate-200">

@@ -334,6 +334,56 @@ class Stage13UserModelAndChatTests {
     }
 
     @Test
+    void modelConnectionTestUsesTemporaryRequestFieldsBeforeSavedSettings() throws Exception {
+        modelServer.returnChatCompletion("stage13 temporary connection ok");
+        createUser("stage13_model_test_override");
+        String token = loginAndGetToken("stage13_model_test_override");
+        saveModelSettings(token, "stage13-saved-test-key", "stage13-saved-test-model");
+
+        mockMvc.perform(post("/api/settings/model/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "baseUrl": "%s/v1",
+                                  "apiKey": "stage13-temporary-test-key",
+                                  "model": "stage13-temporary-test-model"
+                                }
+                                """.formatted(modelServer.baseUrl())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(content().string(not(containsString("stage13-temporary-test-key"))))
+                .andExpect(content().string(not(containsString("stage13-saved-test-key"))))
+                .andExpect(content().string(not(containsString("stage13-temporary-test-model"))))
+                .andExpect(content().string(not(containsString("stage13-saved-test-model"))));
+
+        assertThat(modelServer.authorizationHeaders()).contains("Bearer stage13-temporary-test-key");
+        assertThat(modelServer.authorizationHeaders()).doesNotContain("Bearer stage13-saved-test-key");
+        assertThat(modelServer.requestBodies()).anySatisfy(body ->
+                assertThat(body).contains("stage13-temporary-test-model")
+                        .doesNotContain("stage13-saved-test-model"));
+    }
+
+    @Test
+    void modelConnectionTestAcceptsJsonResponseWithNonJsonContentType() throws Exception {
+        modelServer.returnChatCompletionWithContentType("stage13 text content type test ok", MediaType.TEXT_PLAIN_VALUE);
+        createUser("stage13_model_test_text_type");
+        String token = loginAndGetToken("stage13_model_test_text_type");
+        saveModelSettings(token, "stage13-text-type-test-key", "stage13-text-type-test-model");
+
+        mockMvc.perform(post("/api/settings/model/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(content().string(not(containsString("stage13-text-type-test-key"))))
+                .andExpect(content().string(not(containsString("stage13-text-type-test-model"))));
+
+        assertThat(modelServer.authorizationHeaders()).contains("Bearer stage13-text-type-test-key");
+    }
+
+    @Test
     void modelConnectionTestReturnsReadableSanitizedProviderFailures() throws Exception {
         createUser("stage13_model_test_failure");
         String token = loginAndGetToken("stage13_model_test_failure");

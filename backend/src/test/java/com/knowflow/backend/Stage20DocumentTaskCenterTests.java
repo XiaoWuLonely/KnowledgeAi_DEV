@@ -17,6 +17,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -83,13 +85,15 @@ class Stage20DocumentTaskCenterTests {
         Long failedJobId = createJob(failedDocumentId, sharedKnowledgeBaseId, ownerId, "REPROCESS", "FAILED", 100);
         Long hiddenJobId = createJob(hiddenDocumentId, hiddenKnowledgeBaseId, outsiderId, "UPLOAD_INDEX", "RUNNING", 60);
 
-        mockMvc.perform(get("/api/document-processing-jobs")
+        MvcResult allJobs = mockMvc.perform(get("/api/document-processing-jobs")
                         .param("limit", "10")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(runningJobId))
                 .andExpect(jsonPath("$[1].id").value(failedJobId))
-                .andExpect(content().string(not(containsString(hiddenJobId.toString()))));
+                .andReturn();
+        assertThat(readJobIds(allJobs)).containsExactly(runningJobId, failedJobId)
+                .doesNotContain(hiddenJobId);
 
         mockMvc.perform(get("/api/document-processing-jobs")
                         .param("status", "ACTIVE")
@@ -214,6 +218,15 @@ class Stage20DocumentTaskCenterTests {
     private Long readId(MvcResult result) throws Exception {
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
         return root.get("id").asLong();
+    }
+
+    private List<Long> readJobIds(MvcResult result) throws Exception {
+        JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        List<Long> jobIds = new ArrayList<>();
+        for (JsonNode node : root) {
+            jobIds.add(node.get("id").asLong());
+        }
+        return jobIds;
     }
 
     private Long createUser(String username) {

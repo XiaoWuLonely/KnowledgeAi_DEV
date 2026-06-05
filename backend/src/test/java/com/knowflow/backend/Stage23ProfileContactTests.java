@@ -36,7 +36,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 "knowflow.ai.api-key=stage23-env-key",
                 "knowflow.ai.model=stage23-env-model",
                 "knowflow.jwt.secret=stage23-jwt-secret-key-with-at-least-32-bytes",
-                "knowflow.model.secret-key=stage23-test-secret-key-with-32-bytes"
+                "knowflow.model.secret-key=stage23-test-secret-key-with-32-bytes",
+                "knowflow.oss.endpoint=",
+                "knowflow.oss.bucket=",
+                "knowflow.oss.access-key-id=",
+                "knowflow.oss.access-key-secret="
         }
 )
 @AutoConfigureMockMvc

@@ -1,9 +1,11 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type PointerEvent,
 } from "react";
 import {
   Bot,
@@ -13,8 +15,6 @@ import {
   ChevronRight,
   FileText,
   Loader2,
-  Maximize2,
-  Minimize2,
   Paperclip,
   Send,
   Upload,
@@ -95,6 +95,15 @@ type ChatComposerProps = {
 const MAX_CHAT_MESSAGE_LENGTH = 4000;
 const ALLOWED_ATTACHMENT_EXTENSIONS = [".pdf", ".md", ".markdown", ".txt"];
 const MENTION_PAGE_SIZE = 6;
+const CHAT_INPUT_MIN_HEIGHT = 72;
+const CHAT_INPUT_DEFAULT_HEIGHT = 96;
+const CHAT_INPUT_MAX_VIEWPORT_RATIO = 0.4;
+
+type ChatInputResizeState = {
+  pointerId: number;
+  startY: number;
+  startHeight: number;
+};
 
 type MentionTrigger = {
   start: number;
@@ -128,6 +137,24 @@ function formatFileSize(size: number) {
   }
 
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function getChatInputMaxHeight() {
+  if (typeof window === "undefined") {
+    return 320;
+  }
+
+  return Math.max(
+    CHAT_INPUT_MIN_HEIGHT,
+    Math.floor(window.innerHeight * CHAT_INPUT_MAX_VIEWPORT_RATIO),
+  );
+}
+
+function clampChatInputHeight(value: number) {
+  return Math.min(
+    Math.max(value, CHAT_INPUT_MIN_HEIGHT),
+    getChatInputMaxHeight(),
+  );
 }
 
 function createAttachmentId(file: File) {
@@ -225,10 +252,14 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const resizeStateRef = useRef<ChatInputResizeState | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [ragEnabled, setRagEnabled] = useState(true);
   const [modelId, setModelId] = useState("");
-  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [chatInputHeight, setChatInputHeight] = useState(
+    CHAT_INPUT_DEFAULT_HEIGHT,
+  );
+  const [isResizingInput, setIsResizingInput] = useState(false);
   const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
@@ -256,13 +287,6 @@ export function ChatComposer({
           label: currentModelId,
         }
       : null);
-  const chatLineCount = Math.max(
-    2,
-    chatInput.split("\n").length + Math.floor(chatInput.length / 72),
-  );
-  const chatInputHeight = isInputExpanded
-    ? "30vh"
-    : `min(30vh, ${Math.min(168, chatLineCount * 24 + 24)}px)`;
   const filteredMentionDocuments = useMemo(() => {
     const keyword = mentionTrigger?.query.trim().toLowerCase() ?? "";
 
@@ -282,6 +306,59 @@ export function ChatComposer({
     mentionPage * MENTION_PAGE_SIZE,
     mentionPage * MENTION_PAGE_SIZE + MENTION_PAGE_SIZE,
   );
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setChatInputHeight((currentHeight) =>
+        clampChatInputHeight(currentHeight),
+      );
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizingInput) {
+      return;
+    }
+
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      const resizeState = resizeStateRef.current;
+
+      if (!resizeState) {
+        return;
+      }
+
+      event.preventDefault();
+      setChatInputHeight(
+        clampChatInputHeight(
+          resizeState.startHeight + resizeState.startY - event.clientY,
+        ),
+      );
+    };
+
+    const stopResizing = (event: globalThis.PointerEvent) => {
+      const resizeState = resizeStateRef.current;
+
+      if (resizeState && event.pointerId !== resizeState.pointerId) {
+        return;
+      }
+
+      resizeStateRef.current = null;
+      setIsResizingInput(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+  }, [isResizingInput]);
 
   const removeAttachment = (id: string) => {
     setAttachments((currentAttachments) =>
@@ -406,6 +483,22 @@ export function ChatComposer({
     setMentionTrigger(null);
   };
 
+  const handleChatInputResizeStart = (
+    event: PointerEvent<HTMLButtonElement>,
+  ) => {
+    if (isBusy) {
+      return;
+    }
+
+    event.preventDefault();
+    resizeStateRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: chatInputHeight,
+    };
+    setIsResizingInput(true);
+  };
+
   const handleSendMessage = async () => {
     if (!hasMessageContent || disabled || isSubmitting) {
       return;
@@ -430,7 +523,6 @@ export function ChatComposer({
       setMentionTrigger(null);
       setMentionSelectedIndex(0);
       setMentionPage(0);
-      setIsInputExpanded(false);
     } catch {
       return;
     }
@@ -577,7 +669,20 @@ export function ChatComposer({
               <Paperclip />
             </Button>
           )}
-          <div className="relative flex-1">
+          <div className="relative flex-1 pt-2">
+            <button
+              type="button"
+              aria-label="调整输入框高度"
+              className={cn(
+                "absolute top-1 left-1/2 z-10 flex h-3 w-24 -translate-x-1/2 cursor-ns-resize touch-none items-center justify-center rounded-full text-slate-300 transition-colors hover:text-slate-500 focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:outline-none",
+                isResizingInput && "text-blue-500",
+                isBusy && "cursor-not-allowed opacity-50",
+              )}
+              disabled={isBusy}
+              onPointerDown={handleChatInputResizeStart}
+            >
+              <span className="h-1 w-12 rounded-full bg-current" />
+            </button>
           <Textarea
             ref={textAreaRef}
             value={chatInput}
@@ -593,8 +698,12 @@ export function ChatComposer({
                 setMentionPickerOpen(true);
               }
             }}
-            className="min-h-12 w-full resize-none rounded-[6px] border-transparent px-2 py-2 text-sm leading-6 placeholder:text-slate-400 focus-visible:border-transparent focus-visible:ring-0"
-            style={{ height: chatInputHeight, maxHeight: "30vh" }}
+            className="w-full resize-none rounded-[6px] border-transparent px-2 py-2 text-sm leading-6 placeholder:text-slate-400 focus-visible:border-transparent focus-visible:ring-0"
+            style={{
+              height: `${chatInputHeight}px`,
+              minHeight: `${CHAT_INPUT_MIN_HEIGHT}px`,
+              maxHeight: "40svh",
+            }}
             placeholder={placeholder}
             aria-label="输入问题"
             disabled={isBusy}
@@ -683,17 +792,6 @@ export function ChatComposer({
               </div>
             )}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="mt-1 rounded-[6px] text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            aria-label={isInputExpanded ? "收起输入框" : "展开输入框"}
-            onClick={() => setIsInputExpanded((currentValue) => !currentValue)}
-            disabled={isBusy}
-          >
-            {isInputExpanded ? <Minimize2 /> : <Maximize2 />}
-          </Button>
         </div>
 
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

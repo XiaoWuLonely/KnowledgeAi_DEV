@@ -44,6 +44,25 @@ public interface DocumentRepository {
     @Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")
     int insert(Document document);
 
+    /**
+     * @param knowledgeBaseId target knowledge base
+     * @param originalFilename trimmed upload filename, including extension
+     * @return true when a document with the same name and extension already exists in this knowledge base
+     * @Desc Duplicate detection is scoped to one knowledge base and ignores filename case/outer spaces,
+     * matching the Windows-style user expectation for "same name + extension" uploads.
+     */
+    @Select("""
+            select exists (
+                select 1
+                from documents
+                where knowledge_base_id = #{knowledgeBaseId}
+                  and lower(trim(original_filename)) = lower(trim(#{originalFilename}))
+            )
+            """)
+    boolean existsByKnowledgeBaseIdAndOriginalFilename(
+            @Param("knowledgeBaseId") Long knowledgeBaseId,
+            @Param("originalFilename") String originalFilename);
+
     @Select("""
             select id, knowledge_base_id, original_filename, content_type, size_bytes,
                    status, error_message, embedding_status, embedding_error_message, embedding_updated_at,

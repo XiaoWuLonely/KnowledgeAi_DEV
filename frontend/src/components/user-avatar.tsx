@@ -1,7 +1,8 @@
 import { Check } from "lucide-react";
-import type { ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 
 import {
+  getCurrentUserAvatarBlob,
   type AvatarSource,
   type DefaultAvatarPresetId,
 } from "@/api/auth";
@@ -89,7 +90,11 @@ export function UserAvatar({
   return (
     <Avatar size={size} className={className} {...props}>
       {avatarSource === "UPLOAD" && avatarUrl ? (
-        <AvatarImage src={avatarUrl} alt={`${username} 头像`} />
+        <UploadedAvatarImage
+          key={avatarUrl}
+          avatarUrl={avatarUrl}
+          username={username}
+        />
       ) : null}
       <AvatarFallback
         className={cn(
@@ -101,6 +106,43 @@ export function UserAvatar({
       </AvatarFallback>
     </Avatar>
   );
+}
+
+function UploadedAvatarImage({
+  avatarUrl,
+  username,
+}: {
+  avatarUrl: string;
+  username: string;
+}) {
+  const [avatarObjectUrl, setAvatarObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    let nextObjectUrl: string | null = null;
+
+    void getCurrentUserAvatarBlob(avatarUrl)
+      .then((blob) => {
+        if (!isActive || !blob) {
+          return;
+        }
+
+        nextObjectUrl = URL.createObjectURL(blob);
+        setAvatarObjectUrl(nextObjectUrl);
+      })
+      .catch(() => {});
+
+    return () => {
+      isActive = false;
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [avatarUrl]);
+
+  return avatarObjectUrl ? (
+    <AvatarImage src={avatarObjectUrl} alt={`${username} 头像`} />
+  ) : null;
 }
 
 type AvatarPresetPickerProps = {

@@ -27,7 +27,14 @@ import { DocumentUploadZone } from "@/components/documents/document-upload-zone"
 import { ErrorPanel, EmptyPanel, LoadingPanel } from "@/components/documents/document-common";
 import { documentUploadAccept } from "@/components/documents/document-data";
 import type { DocumentItem, PageSize, StatusFilter, TypeTab } from "@/components/documents/document-types";
-import { getApiErrorMessage, getFileValidationMessage, getPaginationItems, isAllowedFile, mapDocument } from "@/components/documents/document-utils";
+import {
+  DUPLICATE_DOCUMENT_FILENAME_MESSAGE,
+  getApiErrorMessage,
+  getFileValidationMessage,
+  getPaginationItems,
+  isAllowedFile,
+  mapDocument,
+} from "@/components/documents/document-utils";
 import { canMutateKnowledgeBaseDocuments } from "@/components/knowledge-bases/knowledge-base-permissions";
 import { mapKnowledgeBaseResponse } from "@/components/knowledge-bases/knowledge-base-utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -45,6 +52,10 @@ function getMostRecentlyUpdatedKnowledgeBase(items: KnowledgeBaseResponse[]) {
     (first, second) =>
       getKnowledgeBaseUpdatedTime(second) - getKnowledgeBaseUpdatedTime(first),
   )[0];
+}
+
+function normalizeDocumentFilename(filename: string) {
+  return filename.trim().toLowerCase();
 }
 
 const Documents = () => {
@@ -565,25 +576,53 @@ const Documents = () => {
       .map(getFileValidationMessage)
       .filter(Boolean);
     const validFiles = fileArray.filter(isAllowedFile);
+    const existingFilenames = new Set(
+      documents
+        .map((document) => normalizeDocumentFilename(document.originalFilename))
+        .filter(Boolean),
+    );
+    const batchFilenames = new Set<string>();
+    const filesToUpload: File[] = [];
+    let hasDuplicateFilename = false;
+
+    for (const file of validFiles) {
+      const normalizedFilename = normalizeDocumentFilename(file.name);
+
+      if (
+        !normalizedFilename ||
+        existingFilenames.has(normalizedFilename) ||
+        batchFilenames.has(normalizedFilename)
+      ) {
+        hasDuplicateFilename = true;
+        continue;
+      }
+
+      batchFilenames.add(normalizedFilename);
+      filesToUpload.push(file);
+    }
 
     if (invalidMessages.length > 0) {
       toast.error(invalidMessages[0]);
     }
 
-    if (validFiles.length === 0) {
+    if (hasDuplicateFilename) {
+      toast.error(DUPLICATE_DOCUMENT_FILENAME_MESSAGE);
+    }
+
+    if (filesToUpload.length === 0) {
       return;
     }
 
     setIsUploading(true);
 
     try {
-      for (const file of validFiles) {
+      for (const file of filesToUpload) {
         await uploadKnowledgeBaseDocument(knowledgeBaseId, file);
       }
 
       await Promise.all([loadDocuments(), loadProcessingJobs()]);
       toast.success(
-        `已上传 ${validFiles.length} 个文档，后台处理任务已创建`,
+        `已上传 ${filesToUpload.length} 个文档，后台处理任务已创建`,
       );
     } catch (error) {
       handleApiError(error);
@@ -762,7 +801,7 @@ const Documents = () => {
   };
 
   return (
-    <section className="min-h-0 bg-white text-slate-900 xl:h-[calc(100svh-5rem)] xl:max-h-[calc(100svh-5rem)] xl:overflow-hidden">
+    <section className="min-h-0 bg-white text-slate-900 xl:h-[calc(100svh-4.5rem)] xl:max-h-[calc(100svh-4.5rem)] xl:overflow-hidden">
       <input
         ref={fileInputRef}
         type="file"
@@ -772,7 +811,7 @@ const Documents = () => {
         onChange={handleFileChange}
       />
       <div className="grid min-h-0 grid-cols-1 xl:h-full xl:overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-        <main className="min-w-0 overflow-auto bg-white px-4 py-4 xl:px-5">
+        <main className="min-w-0 overflow-auto bg-white px-3 py-4 sm:px-4 xl:px-5">
           <div className="flex min-h-full flex-col gap-4">
             <DocumentToolbar
               knowledgeBaseId={knowledgeBaseId}
@@ -858,7 +897,7 @@ const Documents = () => {
           }
         }}
       >
-        <AlertDialogContent className="rounded-[8px]">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-[8px] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>删除文档</AlertDialogTitle>
             <AlertDialogDescription>
@@ -896,7 +935,7 @@ const Documents = () => {
           }
         }}
       >
-        <AlertDialogContent className="rounded-[8px]">
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-[8px] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {documentToReprocess?.status === "FAILED"

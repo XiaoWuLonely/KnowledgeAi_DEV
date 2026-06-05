@@ -2,6 +2,7 @@ package com.knowflow.backend.auth.avatar;
 
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.OSSObject;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.knowflow.backend.config.OssProperties;
 import org.springframework.http.HttpStatus;
@@ -10,9 +11,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
-import java.net.URL;
-import java.time.Instant;
-import java.util.Date;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -77,22 +75,31 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
 
     /**
      * @param objectKey 数据库保存的 OSS object key
-     * @return 短期签名 URL
-     * @Desc 前端只拿临时显示地址。URL 过期后重新请求 /auth/me 即可刷新，不需要保存永久地址。
+     * @return avatar bytes and MIME type for the backend proxy response
+     * @Desc 前端只请求后端代理接口，不直接接触 OSS object key、签名参数或永久地址。
      */
     @Override
-    public String createSignedUrl(String objectKey) {
+    public AvatarObject read(String objectKey) {
         if (!hasText(objectKey) || !isConfigured()) {
-            return null;
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
         }
         OSS client = createClient();
         try {
-            long ttlSeconds = properties.getSignedUrlTtlSeconds() == null
-                    ? 3600L
-                    : Math.max(60L, properties.getSignedUrlTtlSeconds());
-            Date expiration = Date.from(Instant.now().plusSeconds(ttlSeconds));
-            URL url = client.generatePresignedUrl(properties.getBucket(), objectKey, expiration);
-            return url == null ? null : url.toString();
+            OSSObject object = client.getObject(properties.getBucket(), objectKey);
+            if (object == null || object.getObjectContent() == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
+            }
+            try (object) {
+                ObjectMetadata metadata = object.getObjectMetadata();
+                String contentType = metadata == null ? null : metadata.getContentType();
+                return new AvatarObject(object.getObjectContent().readAllBytes(), contentType);
+            }
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Avatar read failed");
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
         } finally {
             client.shutdown();
         }
@@ -132,7 +139,7 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
      * @param file 前端上传的头像二进制
      * @param contentType 浏览器声明的 MIME 类型
      * @return true 表示 MIME 与文件头一致
-     * @Desc Content-Type 可以被伪造，所以后端还要检查 JPEG/PNG/WebP 魔数，避免把非图片内容上传到 OSS 后再通过签名 URL 分发。
+     * @Desc Content-Type 可以被伪造，所以后端还要检查 JPEG/PNG/WebP 魔数，避免把非图片内容上传到 OSS 后再通过后端头像代理分发。
      */
     private boolean hasMatchingMagicNumber(MultipartFile file, String contentType) {
         try {

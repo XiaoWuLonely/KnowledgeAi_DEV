@@ -4,6 +4,9 @@ import type { DocumentResponse } from "@/api/documents";
 import { allowedExtensions, maxFileSize } from "./document-data";
 import type { DocumentItem, DocumentType } from "./document-types";
 
+export const DUPLICATE_DOCUMENT_FILENAME_MESSAGE =
+  "当前知识库已存在同名文档，请重命名后再上传。";
+
 export function getExtension(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot).toLowerCase() : "";
@@ -143,6 +146,10 @@ export function getApiErrorMessage(error: unknown) {
 
     if (error.response?.status === 403) {
       return backendMessage || "当前角色无权执行此操作";
+    }
+
+    if (error.response?.status === 409) {
+      return backendMessage || DUPLICATE_DOCUMENT_FILENAME_MESSAGE;
     }
 
     if (!error.response) {

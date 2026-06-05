@@ -28,6 +28,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -256,14 +257,15 @@ class Stage21StreamingAvatarMentionTests {
     }
 
     @Test
-    void avatarUploadReturnsSignedUrlWithoutLeakingObjectKeyAndDeleteClearsProfile() throws Exception {
+    void avatarUploadReturnsProxyUrlWithoutLeakingObjectKeyAndDeleteClearsProfile() throws Exception {
         createUser("stage21_avatar_owner");
         String token = loginAndGetToken("stage21_avatar_owner");
+        byte[] avatarBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "avatar.png",
                 "image/png",
-                new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00}
+                avatarBytes
         );
 
         mockMvc.perform(multipart("/api/auth/me/avatar")
@@ -273,7 +275,9 @@ class Stage21StreamingAvatarMentionTests {
                 .andExpect(jsonPath("$.avatarConfigured").value(true))
                 .andExpect(jsonPath("$.avatarSource").value("UPLOAD"))
                 .andExpect(jsonPath("$.avatarPresetId").doesNotExist())
-                .andExpect(jsonPath("$.avatarUrl").value(containsString("https://signed.example.test/")))
+                .andExpect(jsonPath("$.avatarUrl").value(containsString("/api/auth/me/avatar/content")))
+                .andExpect(content().string(not(containsString("object-key"))))
+                .andExpect(content().string(not(containsString("OSSAccessKeyId"))))
                 .andExpect(content().string(not(containsString("stage21-avatar-secret"))));
 
         assertThat(readAvatarObjectKey("stage21_avatar_owner")).contains("object-key");
@@ -284,8 +288,16 @@ class Stage21StreamingAvatarMentionTests {
                 .andExpect(jsonPath("$.avatarConfigured").value(true))
                 .andExpect(jsonPath("$.avatarSource").value("UPLOAD"))
                 .andExpect(jsonPath("$.avatarPresetId").doesNotExist())
-                .andExpect(jsonPath("$.avatarUrl").value(containsString("https://signed.example.test/")))
+                .andExpect(jsonPath("$.avatarUrl").value(containsString("/api/auth/me/avatar/content")))
+                .andExpect(content().string(not(containsString("object-key"))))
+                .andExpect(content().string(not(containsString("OSSAccessKeyId"))))
                 .andExpect(content().string(not(containsString("stage21-avatar-secret"))));
+
+        mockMvc.perform(get("/api/auth/me/avatar/content")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG_VALUE))
+                .andExpect(content().bytes(avatarBytes));
 
         mockMvc.perform(delete("/api/auth/me/avatar")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
@@ -566,25 +578,37 @@ class Stage21StreamingAvatarMentionTests {
 
     static class FakeAvatarStorageService implements AvatarStorageService {
         private final List<String> deletedObjectKeys = new CopyOnWriteArrayList<>();
+        private final Map<String, AvatarObject> objects = new ConcurrentHashMap<>();
         private volatile int uploadSequence = 0;
 
         @Override
         public String upload(Long userId, MultipartFile file) {
             validateFile(file);
             uploadSequence += 1;
-            return "knowflow/avatars/%d/object-key-%d.png".formatted(userId, uploadSequence);
+            String objectKey = "knowflow/avatars/%d/object-key-%d.png".formatted(userId, uploadSequence);
+            try {
+                objects.put(objectKey, new AvatarObject(file.getBytes(), file.getContentType()));
+            } catch (IOException exception) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "avatar file type is not supported");
+            }
+            return objectKey;
         }
 
         @Override
         public void delete(String objectKey) {
             if (objectKey != null) {
                 deletedObjectKeys.add(objectKey);
+                objects.remove(objectKey);
             }
         }
 
         @Override
-        public String createSignedUrl(String objectKey) {
-            return objectKey == null ? null : "https://signed.example.test/" + objectKey;
+        public AvatarObject read(String objectKey) {
+            AvatarObject object = objects.get(objectKey);
+            if (object == null) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Avatar not found");
+            }
+            return object;
         }
 
         @Override
@@ -594,6 +618,7 @@ class Stage21StreamingAvatarMentionTests {
 
         void reset() {
             deletedObjectKeys.clear();
+            objects.clear();
             uploadSequence = 0;
         }
 

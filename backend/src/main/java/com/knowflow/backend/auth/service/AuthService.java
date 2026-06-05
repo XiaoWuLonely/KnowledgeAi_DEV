@@ -17,6 +17,7 @@ import java.util.Set;
 
 @Service
 public class AuthService {
+    private static final String AVATAR_CONTENT_PATH = "/api/auth/me/avatar/content";
     private static final Set<String> ALLOWED_AVATAR_PRESET_IDS = Set.of(
             "blue", "green", "coral", "violet", "mint", "rose", "amber", "slate"
     );
@@ -38,6 +39,21 @@ public class AuthService {
     public UserResponse getCurrentUser(Long userId) {
         User user = findCurrentUserOr401(userId);
         return toResponse(user);
+    }
+
+    /**
+     * Reads the current user's uploaded avatar through the backend so clients never receive
+     * OSS object keys, signed query parameters or permanent storage URLs.
+     *
+     * @param userId current JWT user id
+     * @return avatar bytes and safe content type from the configured storage backend
+     */
+    public AvatarStorageService.AvatarObject getCurrentUserAvatar(Long userId) {
+        User user = findCurrentUserOr401(userId);
+        if (!hasText(user.getAvatarObjectKey())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
+        }
+        return avatarStorageService.read(user.getAvatarObjectKey());
     }
 
 
@@ -109,7 +125,7 @@ public class AuthService {
     /**
      * @param userId 当前 JWT 用户 ID
      * @param file 头像文件，支持 jpeg/png/webp，最大 2MB
-     * @return 更新后的用户资料，包含短期签名 avatarUrl
+     * @return 更新后的用户资料，包含后端头像内容代理 avatarUrl
      * @Desc 头像文件上传到 OSS，数据库只保存 object key。旧头像删除为尽力操作，避免用户资料更新被旧对象删除失败阻塞。
      */
     @Transactional
@@ -187,12 +203,19 @@ public class AuthService {
                 user.getRole(),
                 user.getEmail(),
                 user.getPhone(),
-                hasUploadedAvatar ? avatarStorageService.createSignedUrl(user.getAvatarObjectKey()) : null,
+                hasUploadedAvatar ? avatarContentUrl(user) : null,
                 avatarSource != AvatarSource.NONE,
                 avatarStorageService.isConfigured(),
                 avatarSource,
                 avatarSource == AvatarSource.PRESET ? user.getAvatarPresetId() : null
         );
+    }
+
+    private String avatarContentUrl(User user) {
+        String cacheBuster = user.getAvatarUpdatedAt() == null
+                ? String.valueOf(user.getId())
+                : String.valueOf(user.getAvatarUpdatedAt().toInstant().toEpochMilli());
+        return AVATAR_CONTENT_PATH + "?v=" + cacheBuster;
     }
 
 

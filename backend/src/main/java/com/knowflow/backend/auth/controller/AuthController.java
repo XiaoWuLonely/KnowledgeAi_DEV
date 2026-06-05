@@ -7,6 +7,7 @@ import com.knowflow.backend.auth.dto.request.UpdateCurrentUserRequest;
 import com.knowflow.backend.auth.dto.response.LoginResponse;
 import com.knowflow.backend.auth.dto.request.LoginRequest;
 import com.knowflow.backend.auth.dto.response.UserResponse;
+import com.knowflow.backend.auth.avatar.AvatarStorageService.AvatarObject;
 import com.knowflow.backend.auth.service.AuthService;
 import com.knowflow.backend.auth.service.JwtTokenService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,7 +20,10 @@ import com.knowflow.backend.common.dto.response.MessageResponse;
 import com.knowflow.backend.user.entity.User;
 import com.knowflow.backend.user.repository.UserRepository;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
@@ -71,7 +75,7 @@ public class AuthController {
     /**
      * @param file multipart 字段名 file，支持 jpeg/png/webp，最大 2MB
      * @param jwt  当前登录用户
-     * @return 更新后的用户资料；avatarUrl 是短期签名 URL，不是 OSS object key
+     * @return 更新后的用户资料；avatarUrl 是后端头像内容代理地址，不是 OSS object key
      * @Desc 头像上传使用后端 OSS 配置，前端不会接触 AccessKey、bucket 或 object key。
      */
     @PostMapping("/me/avatar")
@@ -79,6 +83,15 @@ public class AuthController {
             @RequestPart("file") MultipartFile file,
             @AuthenticationPrincipal Jwt jwt) {
         return authService.uploadAvatar(getCurrentId(jwt), file);
+    }
+
+    @GetMapping("/me/avatar/content")
+    public ResponseEntity<byte[]> avatarContent(@AuthenticationPrincipal Jwt jwt) {
+        AvatarObject avatar = authService.getCurrentUserAvatar(getCurrentId(jwt));
+        return ResponseEntity.ok()
+                .contentType(toSafeAvatarMediaType(avatar.contentType()))
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(avatar.bytes());
     }
 
     /**
@@ -208,5 +221,14 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         return value.trim();
+    }
+
+    private MediaType toSafeAvatarMediaType(String contentType) {
+        return switch (contentType == null ? "" : contentType) {
+            case MediaType.IMAGE_JPEG_VALUE -> MediaType.IMAGE_JPEG;
+            case MediaType.IMAGE_PNG_VALUE -> MediaType.IMAGE_PNG;
+            case "image/webp" -> MediaType.parseMediaType("image/webp");
+            default -> MediaType.APPLICATION_OCTET_STREAM;
+        };
     }
 }
