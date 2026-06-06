@@ -76,10 +76,12 @@ KNOWFLOW_MODEL_SECRET_KEY=CHANGE_ME_use_a_long_random_model_secret_at_least_32_c
 环境要求：
 
 - Node.js 18+ 或项目当前 pnpm 可用的 Node 版本
-- pnpm
-- Java 21+
-- Docker Desktop 或兼容 Docker Compose 的运行环境
 
+- pnpm
+
+- Java 21+
+
+- Docker Desktop 或兼容 Docker Compose 的运行环境
 1. 启动本地 PostgreSQL：
 
 ```powershell
@@ -210,28 +212,28 @@ cd backend
 
 ## 环境变量说明
 
-| 变量 | 默认/示例 | 说明 |
-|---|---|---|
-| `KNOWFLOW_FRONTEND_PORT` | `5173` | Docker 部署时前端 Nginx 映射到宿主机的端口。 |
-| `KNOWFLOW_BACKEND_PORT` | `8080` | Docker 部署时后端 Spring Boot 映射到宿主机的端口。 |
-| `KNOWFLOW_POSTGRES_PORT` | `5432` | PostgreSQL 映射到宿主机的端口。 |
-| `POSTGRES_DB` | `knowflow` | PostgreSQL 数据库名。 |
-| `POSTGRES_USER` | `knowflow` | PostgreSQL 用户名。 |
-| `POSTGRES_PASSWORD` | `CHANGE_ME...` | PostgreSQL 密码，生产部署必须替换。 |
-| `KNOWFLOW_JWT_SECRET` | `CHANGE_ME...` | JWT 签名密钥，建议至少 32 个随机字符。 |
-| `KNOWFLOW_MODEL_SECRET_KEY` | `CHANGE_ME...` | 用户模型 API Key 的后端加密密钥。修改后，历史已保存 API Key 将无法解密。 |
-| `KNOWFLOW_AI_BASE_URL` | 空 | 可选 OpenAI-compatible 兜底 Base URL。仅当用户未在 Settings 保存模型配置时使用。 |
-| `KNOWFLOW_AI_API_KEY` | 空 | 可选 AI 兜底 API Key，不要提交真实 Key。 |
-| `KNOWFLOW_AI_MODEL` | 空 | 可选 AI 兜底模型名。 |
-| `KNOWFLOW_AI_EMBEDDING_MODEL` | 空 | 可选 embedding 模型名。为空时保留全文检索，不写入语义向量。 |
-| `KNOWFLOW_AI_TIMEOUT_SECONDS` | `60` | 模型调用超时时间。 |
-| `KNOWFLOW_OSS_ENDPOINT` | 空 | 可选阿里云 OSS endpoint。为空时头像上传不可用，但默认头像仍可用。 |
-| `KNOWFLOW_OSS_BUCKET` | 空 | 可选 OSS bucket 名称。 |
-| `KNOWFLOW_OSS_ACCESS_KEY_ID` | 空 | 可选 OSS AccessKey ID，不要提交真实密钥。 |
-| `KNOWFLOW_OSS_ACCESS_KEY_SECRET` | 空 | 可选 OSS AccessKey Secret，不要提交真实密钥。 |
-| `KNOWFLOW_OSS_AVATAR_PREFIX` | `knowflow/avatars` | 头像对象前缀，用于隔离 KnowFlow 上传路径。 |
-| `KNOWFLOW_DB_MAX_POOL_SIZE` | `10` | Docker 后端数据库连接池最大连接数。 |
-| `KNOWFLOW_DB_MIN_IDLE` | `1` | Docker 后端数据库连接池最小空闲连接数。 |
+| 变量                               | 默认/示例              | 说明                                                          |
+| -------------------------------- | ------------------ | ----------------------------------------------------------- |
+| `KNOWFLOW_FRONTEND_PORT`         | `5173`             | Docker 部署时前端 Nginx 映射到宿主机的端口。                               |
+| `KNOWFLOW_BACKEND_PORT`          | `8080`             | Docker 部署时后端 Spring Boot 映射到宿主机的端口。                         |
+| `KNOWFLOW_POSTGRES_PORT`         | `5432`             | PostgreSQL 映射到宿主机的端口。                                       |
+| `POSTGRES_DB`                    | `knowflow`         | PostgreSQL 数据库名。                                            |
+| `POSTGRES_USER`                  | `knowflow`         | PostgreSQL 用户名。                                             |
+| `POSTGRES_PASSWORD`              | `CHANGE_ME...`     | PostgreSQL 密码，生产部署必须替换。                                     |
+| `KNOWFLOW_JWT_SECRET`            | `CHANGE_ME...`     | JWT 签名密钥，建议至少 32 个随机字符。                                     |
+| `KNOWFLOW_MODEL_SECRET_KEY`      | `CHANGE_ME...`     | 用户模型 API Key 的后端加密密钥。修改后，历史已保存 API Key 将无法解密。               |
+| `KNOWFLOW_AI_BASE_URL`           | 空                  | 可选 OpenAI-compatible 兜底 Base URL。仅当用户未在 Settings 保存模型配置时使用。 |
+| `KNOWFLOW_AI_API_KEY`            | 空                  | 可选 AI 兜底 API Key，不要提交真实 Key。                                |
+| `KNOWFLOW_AI_MODEL`              | 空                  | 可选 AI 兜底模型名。                                                |
+| `KNOWFLOW_AI_EMBEDDING_MODEL`    | 空                  | 可选 embedding 模型名。为空时保留全文检索，不写入语义向量。                         |
+| `KNOWFLOW_AI_TIMEOUT_SECONDS`    | `60`               | 模型调用超时时间。                                                   |
+| `KNOWFLOW_OSS_ENDPOINT`          | 空                  | 可选阿里云 OSS endpoint。为空时头像上传不可用，但默认头像仍可用。                     |
+| `KNOWFLOW_OSS_BUCKET`            | 空                  | 可选 OSS bucket 名称。                                           |
+| `KNOWFLOW_OSS_ACCESS_KEY_ID`     | 空                  | 可选 OSS AccessKey ID，不要提交真实密钥。                               |
+| `KNOWFLOW_OSS_ACCESS_KEY_SECRET` | 空                  | 可选 OSS AccessKey Secret，不要提交真实密钥。                           |
+| `KNOWFLOW_OSS_AVATAR_PREFIX`     | `knowflow/avatars` | 头像对象前缀，用于隔离 KnowFlow 上传路径。                                  |
+| `KNOWFLOW_DB_MAX_POOL_SIZE`      | `10`               | Docker 后端数据库连接池最大连接数。                                       |
+| `KNOWFLOW_DB_MIN_IDLE`           | `1`                | Docker 后端数据库连接池最小空闲连接数。                                     |
 
 ## 常见问题排查
 
