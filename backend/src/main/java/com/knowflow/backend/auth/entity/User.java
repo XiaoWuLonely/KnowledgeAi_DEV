@@ -1,4 +1,4 @@
-package com.knowflow.backend.user.entity;
+package com.knowflow.backend.auth.entity;
 
 import lombok.Data;
 

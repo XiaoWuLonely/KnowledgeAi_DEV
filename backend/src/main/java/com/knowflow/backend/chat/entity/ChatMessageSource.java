@@ -22,9 +22,9 @@ public class ChatMessageSource {
     private Integer chunkIndex;
     private String content;
     private Double score;
+
     /**
-     * Score breakdown copied from the exact chunks used in the prompt.
-     * This keeps Chat citations consistent with the retrieval path that generated the answer.
+     * 混合分数
      */
     private Double hybridScore;
     private Double fulltextScore;

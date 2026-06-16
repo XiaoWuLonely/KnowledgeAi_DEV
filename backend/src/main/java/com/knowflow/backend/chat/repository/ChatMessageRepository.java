@@ -86,8 +86,8 @@ public interface ChatMessageRepository {
      * @param sessionId 会话ID
      * @param userId    用户ID
      * @return 聊天消息列表
+     * @Desc 列出会话下的所有消息
      */
-
     @Select("""
             select m.id, m.session_id, m.role, m.content, m.generation_id, m.created_at
             from chat_messages m 

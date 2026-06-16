@@ -4,11 +4,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Aliyun OSS configuration for user avatars.
- *
- * <p>The bucket can be shared with another project safely because KnowFlow writes only under
- * avatarPrefix, defaulting to knowflow/avatars. Access keys are only used server-side and are
- * never returned by any API.</p>
+ * Aliyun OSS configuration.
+ * 用于配置 OSS 相关的属性，如 endpoint、bucket、accessKeyId、accessKeySecret、avatarPrefix 等
  */
 @Data
 @ConfigurationProperties(prefix = "knowflow.oss")

@@ -11,7 +11,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 import com.knowflow.backend.config.JwtProperties;
-import com.knowflow.backend.user.entity.User;
+import com.knowflow.backend.auth.entity.User;
 
 @Service
 public class JwtTokenService {
@@ -24,10 +24,18 @@ public class JwtTokenService {
         this.jwtProperties = jwtProperties;
     }
 
+    /**
+     * @Desc 生成JWT令牌
+     * @param user
+     * @return
+     */
     public String generateToken(User user) {
-        Instant now = Instant.now();
-        Instant expiresAt = now.plus(jwtProperties.getExpiresInMinutes(), ChronoUnit.MINUTES);
+        Instant now = Instant.now(); // 当前时间
+        Instant expiresAt = now.plus(jwtProperties.getExpiresInMinutes(), ChronoUnit.MINUTES); // 过期时间
 
+        /**
+         * 构建JWT令牌的声明集
+         */
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("knowflow-backend")
                 .issuedAt(now)
@@ -38,8 +46,16 @@ public class JwtTokenService {
                 .claim("roles", List.of(user.getRole()))
                 .build();
 
+        /**
+         * 构建JWT令牌的头
+         * @param header 算法名称为HS256，密钥为JWT属性中的密钥
+         */
         JwsHeader header = JwsHeader.with(() -> "HS256").build();
 
+        /**
+         * 编码JWT令牌
+         * @param tokenValue 编码后的JWT令牌
+         */
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 }

@@ -18,12 +18,23 @@ public class KnowledgeBaseAccessService {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
     }
 
+    /**
+     * @Desc 确保用户是知识库的成员
+     * @param knowledgeBaseId 知识库 ID
+     * @param userId          用户 ID
+     * @return 知识库实体，包含访问角色
+     */
     public KnowledgeBase requireMember(Long knowledgeBaseId, Long userId) {
         return knowledgeBaseRepository.findAccessibleById(knowledgeBaseId, userId)
-                // 阶段 12：非成员统一返回 404，避免通过 ID 探测知识库是否存在。
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge base not found"));
     }
 
+    /**
+     * @Desc 确保用户是知识库的编辑者
+     * @param knowledgeBaseId 知识库 ID
+     * @param userId          用户 ID
+     * @return 知识库实体，包含访问角色
+     */
     public KnowledgeBase requireEditor(Long knowledgeBaseId, Long userId) {
         KnowledgeBase knowledgeBase = requireMember(knowledgeBaseId, userId);
         String role = knowledgeBase.getAccessRole();
@@ -35,6 +46,12 @@ public class KnowledgeBaseAccessService {
         return knowledgeBase;
     }
 
+    /**
+     * @Desc 确保用户是知识库的创建者
+     * @param knowledgeBaseId 知识库 ID
+     * @param userId          用户 ID
+     * @return 知识库实体，包含访问角色
+     */
     public KnowledgeBase requireOwner(Long knowledgeBaseId, Long userId) {
         KnowledgeBase knowledgeBase = requireMember(knowledgeBaseId, userId);
 

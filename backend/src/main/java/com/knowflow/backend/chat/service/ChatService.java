@@ -131,11 +131,21 @@ public class ChatService {
      */
     public List<ChatMessageResponse> listMessages(Long sessionId, Long userId) {
         ChatSession session = getSessionOr404(sessionId, userId);
-        // Stage 12: a user-owned session is usable only while the user is still a member of its KB.
         accessService.requireMember(session.getKnowledgeBaseId(), userId);
         // 用户打开消息列表后，说明已看到这个会话，清除未读提醒。
         chatSessionRepository.markRead(sessionId, userId);
 
+        /**
+         * @Des 列出消息
+         * 嵌套查询消息来源source信息
+         * [ Message(id=10, content="你好", role="USER"),
+         *   Message(id=11, content="根据...", role="ASSISTANT"),
+         *   Message(id=12, content="另外...", role="ASSISTANT") ]
+         *
+         * [ ChatMessageResponse(id=10, content="你好",    sources=[]),
+         *   ChatMessageResponse(id=11, content="根据...", sources=[技术文档, FAQ]),
+         *   ChatMessageResponse(id=12, content="另外...", sources=[]) ]
+         */
         return chatMessageRepository.findAllBySessionIdAndUserId(sessionId, userId)
                 .stream()
                 .map(message -> {
@@ -221,9 +231,11 @@ public class ChatService {
 
     @Transactional
     public SendMessageResponse sendMessage(Long sessionId, Long userId, SendMessageRequest request) {
+        //校验会话是否存在且用户是会话成员或管理员
         ChatSession session = getSessionOr404(sessionId, userId);
         // 会话创建后成员权限也可能被移除，所以发送消息前必须重新校验知识库成员身份。
         accessService.requireMember(session.getKnowledgeBaseId(), userId);
+
         String question = normalizeContent(request == null ? null : request.getContent());
         String requestedModel = normalizeOptionalModel(request == null ? null : request.getModel());
         boolean ragEnabled = request == null || request.getRagEnabled() == null || request.getRagEnabled();
@@ -232,7 +244,7 @@ public class ChatService {
         }
 
         List<ChatMessage> historyMessages = loadPromptHistory(session, userId);
-        String activeGenerationId = UUID.randomUUID().toString();
+        String activeGenerationId = UUID.randomUUID().toString(); // 本次后台生成 ID，用于和异步任务回写时做一致性校验。
 
         ChatMessage userMessage = new ChatMessage();
         userMessage.setSessionId(session.getId());
@@ -243,6 +255,7 @@ public class ChatService {
         // 先保存用户消息并把会话置为生成中，activeGenerationId 是本次后台任务的“写入许可”。
         // 用户点击“打断”会清空它，旧任务返回后也不能再写入助手消息或覆盖状态。
         chatSessionRepository.beginGeneration(session.getId(), userId, activeGenerationId);
+
         chatGenerationService.generate(
                 session.getId(),
                 userId,
@@ -423,7 +436,7 @@ public class ChatService {
      */
     /**
      * @param session 当前用户自己的 Chat 会话
-     * @param userId 当前 JWT 用户 ID
+     * @param userId  当前 JWT 用户 ID
      * @return 允许进入 prompt 的最近历史消息
      * @Desc 流式和非流式生成必须使用同一套历史上下文限制，避免 SSE 路径绕开条数和字符数控制。
      */

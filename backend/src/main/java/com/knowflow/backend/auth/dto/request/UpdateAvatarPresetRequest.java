@@ -3,10 +3,7 @@ package com.knowflow.backend.auth.dto.request;
 import lombok.Data;
 
 /**
- * Request body for selecting one of the built-in avatar presets.
- *
- * <p>avatarPresetId must be one of the server-maintained preset ids. The backend
- * validates this allow-list so clients cannot persist arbitrary CSS/image ids.</p>
+ * @Desc 更新用户头像预设请求体
  */
 @Data
 public class UpdateAvatarPresetRequest {

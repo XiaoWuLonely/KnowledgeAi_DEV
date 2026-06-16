@@ -17,8 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.knowflow.backend.common.dto.response.MessageResponse;
-import com.knowflow.backend.user.entity.User;
-import com.knowflow.backend.user.repository.UserRepository;
+import com.knowflow.backend.auth.entity.User;
+import com.knowflow.backend.auth.repository.UserRepository;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
  * 认证控制器
+ * 用于处理用户认证相关的 API 请求，如登录、注册、更新用户信息等
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -37,6 +38,14 @@ public class AuthController {
     private final JwtTokenService jwtTokenService;
     private final AuthService authService;
 
+    /**
+     * 构造函数
+     *
+     * @param userRepository  用户仓库
+     * @param passwordEncoder 密码编码器
+     * @param jwtTokenService JWT 令牌服务
+     * @param authService     认证服务
+     */
     public AuthController(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -120,7 +129,7 @@ public class AuthController {
     /**
      * @param jwt
      * @Desc 删除当前用户账号，
-     *       包括所有关联的会话、消息、引用来源、文档和 chunks、知识库
+     * 包括所有关联的会话、消息、引用来源、文档和 chunks、知识库
      */
     @DeleteMapping("/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)

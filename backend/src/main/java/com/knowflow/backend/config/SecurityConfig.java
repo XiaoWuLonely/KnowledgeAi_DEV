@@ -24,6 +24,10 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
+/**
+ * 安全配置类
+ * 用于配置 Spring Security 的过滤链，决定哪些请求能访问，哪些请求要登录
+ */
 // 告诉 Spring：这是一个配置类
 @Configuration
 public class SecurityConfig {

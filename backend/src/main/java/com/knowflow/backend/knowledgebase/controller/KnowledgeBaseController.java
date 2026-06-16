@@ -43,12 +43,23 @@ public class KnowledgeBaseController {
         this.accessService = accessService;
     }
 
+    /**
+     * @desc 列出所有可访问的知识知识库
+     * @param jwt
+     * @return
+     */
     @GetMapping
     public List<KnowledgeBase> listKnowledgeBases(@AuthenticationPrincipal Jwt jwt) {
         Long userId = getCurrentUserId(jwt);
         return knowledgeBaseRepository.findAllAccessibleByUserId(userId);
     }
 
+    /**
+     * @desc 获取知识库详情
+     * @param id
+     * @param jwt
+     * @return
+     */
     @GetMapping("/{id}")
     public KnowledgeBase getKnowledgeBase(
             @PathVariable Long id,
@@ -57,6 +68,12 @@ public class KnowledgeBaseController {
         return accessService.requireMember(id, userId);
     }
 
+    /**
+     * @desc 创建知识库
+     * @param request
+     * @param jwt
+     * @return
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
@@ -99,6 +116,13 @@ public class KnowledgeBaseController {
                         "Create knowledge base not found"));
     }
 
+    /**
+     * @desc 更新知识库
+     * @param id
+     * @param request
+     * @param jwt
+     * @return
+     */
     @PatchMapping("/{id}")
     public KnowledgeBase updateKnowledgeBase(
             @PathVariable Long id,
@@ -123,6 +147,11 @@ public class KnowledgeBaseController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge base not found"));
     }
 
+    /**
+     * @desc 删除知识库
+     * @param id
+     * @param jwt
+     */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteKnowledgeBase(

@@ -5,8 +5,8 @@ import com.knowflow.backend.auth.dto.request.UpdateAvatarPresetRequest;
 import com.knowflow.backend.auth.dto.response.UserResponse;
 import com.knowflow.backend.auth.dto.response.UserResponse.AvatarSource;
 import com.knowflow.backend.auth.avatar.AvatarStorageService;
-import com.knowflow.backend.user.entity.User;
-import com.knowflow.backend.user.repository.UserRepository;
+import com.knowflow.backend.auth.entity.User;
+import com.knowflow.backend.auth.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,9 +15,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Set;
 
+import static com.knowflow.backend.common.utils.Utils.hasText;
+
 @Service
 public class AuthService {
-    private static final String AVATAR_CONTENT_PATH = "/api/auth/me/avatar/content";
+    private static final String AVATAR_CONTENT_PATH = "/api/auth/me/avatar/content"; // 头像内容路径
     private static final Set<String> ALLOWED_AVATAR_PRESET_IDS = Set.of(
             "blue", "green", "coral", "violet", "mint", "rose", "amber", "slate"
     );
@@ -42,11 +44,8 @@ public class AuthService {
     }
 
     /**
-     * Reads the current user's uploaded avatar through the backend so clients never receive
-     * OSS object keys, signed query parameters or permanent storage URLs.
-     *
-     * @param userId current JWT user id
-     * @return avatar bytes and safe content type from the configured storage backend
+     * @return
+     * @Desc 获取当前用户头像
      */
     public AvatarStorageService.AvatarObject getCurrentUserAvatar(Long userId) {
         User user = findCurrentUserOr401(userId);
@@ -58,17 +57,10 @@ public class AuthService {
 
 
     /**
-     * Updates editable profile fields for the current JWT user.
-     *
-     * <p>{@code username}, {@code email} and {@code phone} are optional, but clients must
-     * submit at least one editable field. A missing field keeps the current value, while
-     * explicit {@code null} or blank email/phone clears that contact field. Username remains
-     * the login and collaboration identifier, so it is trimmed, length-limited and checked
-     * for conflicts with other users before persistence.</p>
-     *
-     * @param userId current JWT user id
-     * @param request profile patch request
-     * @return latest user profile without password hash, OSS object key or secrets
+     * @param userId
+     * @param request
+     * @return
+     * @Desc 更新当前用户信息
      */
     @Transactional
     public UserResponse updateCurrentUser(Long userId, UpdateCurrentUserRequest request) {
@@ -124,7 +116,7 @@ public class AuthService {
 
     /**
      * @param userId 当前 JWT 用户 ID
-     * @param file 头像文件，支持 jpeg/png/webp，最大 2MB
+     * @param file   头像文件，支持 jpeg/png/webp，最大 2MB
      * @return 更新后的用户资料，包含后端头像内容代理 avatarUrl
      * @Desc 头像文件上传到 OSS，数据库只保存 object key。旧头像删除为尽力操作，避免用户资料更新被旧对象删除失败阻塞。
      */
@@ -141,7 +133,7 @@ public class AuthService {
     }
 
     /**
-     * @param userId 当前 JWT 用户 ID
+     * @param userId  当前 JWT 用户 ID
      * @param request 默认头像选择请求，avatarPresetId 必须在固定 allow-list 中
      * @return 更新后的用户资料；avatarSource 为 PRESET，avatarUrl 为空
      * @Desc 默认头像是本地预设，不依赖外部存储。选择预设会清空上传头像 object key，并尽力删除旧 OSS 对象；
@@ -240,14 +232,9 @@ public class AuthService {
     }
 
     /**
-     * Normalizes a submitted profile username before persistence.
-     *
-     * <p>The username is still used for login and knowledge-base collaboration, so
-     * blank values and values over 100 characters are rejected here. Uniqueness is
-     * checked by the caller so the current user's own username can be excluded.</p>
-     *
-     * @param username submitted username from the Settings profile editor
-     * @return trimmed username ready for uniqueness checking and persistence
+     * @param username
+     * @return
+     * @Desc 格式化判断用户名是否有效
      */
     private String normalizeUsernameForProfile(String username) {
         if (username == null || username.isBlank()) {
@@ -261,14 +248,9 @@ public class AuthService {
     }
 
     /**
-     * Normalizes the optional Settings contact phone.
-     *
-     * <p>Phone is profile metadata only. It is not unique and not used for login, but the
-     * backend still constrains stored values to a small, readable format so random text,
-     * secrets or copied Authorization headers are not persisted in the user profile.</p>
-     *
-     * @param phone submitted phone value; null or blank clears the saved phone
-     * @return trimmed phone or null when clearing
+     * @Desc 格式化判断手机号是否有效
+     * @param phone
+     * @return
      */
     private String normalizePhone(String phone) {
         if (phone == null || phone.isBlank()) {
@@ -288,6 +270,11 @@ public class AuthService {
         return normalized;
     }
 
+    /**
+     * @Desc 格式化判断头像预设ID是否有效
+     * @param avatarPresetId
+     * @return
+     */
     private String normalizeAvatarPresetId(String avatarPresetId) {
         if (avatarPresetId == null || avatarPresetId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "avatarPresetId is required");
@@ -297,9 +284,5 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "avatarPresetId is invalid");
         }
         return normalized;
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 }

@@ -50,15 +50,15 @@ public class ChatGenerationService {
     }
 
     /**
-     * @param sessionId       会话 ID，用于保存助手消息并更新生成状态。
-     * @param userId          当前 JWT 用户 ID，用于读取该用户自己的 RAG 参数和模型鉴权配置。
-     * @param knowledgeBaseId 会话所属知识库 ID，用于限定检索范围。
-     * @param question        用户刚发送的问题。
-     * @param historyMessages 当前用户当前会话允许进入 prompt 的历史消息。
-     * @param modelOverride   本次 Chat 请求选择的模型；只覆盖 model，不覆盖当前用户 Base URL/API Key。
-     * @param ragEnabled      本次生成是否启用知识库检索；false 时跳过 chunks 检索并保持 sources 为空。
+     * @param sessionId            会话 ID，用于保存助手消息并更新生成状态。
+     * @param userId               当前 JWT 用户 ID，用于读取该用户自己的 RAG 参数和模型鉴权配置。
+     * @param knowledgeBaseId      会话所属知识库 ID，用于限定检索范围。
+     * @param question             用户刚发送的问题。
+     * @param historyMessages      当前用户当前会话允许进入 prompt 的历史消息。
+     * @param modelOverride        本次 Chat 请求选择的模型；只覆盖 model，不覆盖当前用户 Base URL/API Key。
+     * @param ragEnabled           本次生成是否启用知识库检索；false 时跳过 chunks 检索并保持 sources 为空。
      * @param mentionedDocumentIds Chat 输入框 @ 提到的当前知识库文档 ID；会限制 RAG 上下文到这些文档。
-     * @param generationId    本次生成的写入许可 ID；被打断后该 ID 会失效，异步任务不能落库。
+     * @param generationId         本次生成的写入许可 ID；被打断后该 ID 会失效，异步任务不能落库。
      * @Desc 后台异步完成检索、prompt 构造、模型调用、助手消息和 sources 落库。
      * 空检索与旧逻辑不同：仍调用模型生成回答，但 sources 保持空数组，并在 prompt 中要求说明无可引用知识库片段。
      * 失败时只写入脱敏错误和 FAILED 状态，也把 unread 置为 true，因为“后台生成已结束且需要用户处理”
@@ -86,6 +86,18 @@ public class ChatGenerationService {
         }
     }
 
+    /**
+     * @param sessionId
+     * @param userId
+     * @param knowledgeBaseId
+     * @param question
+     * @param historyMessages
+     * @param modelOverride
+     * @param ragEnabled
+     * @param mentionedDocumentIds
+     * @param generationId
+     * @Desc 执行生成任务
+     */
     private void doGenerate(
             Long sessionId,
             Long userId,
@@ -98,6 +110,15 @@ public class ChatGenerationService {
             String generationId
     ) {
         UserRagSettings ragSettings = settingsService.getEffectiveRagSettings(userId);
+        /**
+         * @Desc 检索知识库上下文
+         * @param knowledgeBaseId
+         * @param userId
+         * @param question
+         * @param mentionedDocumentIds
+         * @param ragSettings
+         * @return
+         */
         List<SearchResultResponse> retrievedChunks = ragEnabled
                 ? chatDocumentContextService.resolveContextChunks(
                 knowledgeBaseId,
@@ -105,13 +126,24 @@ public class ChatGenerationService {
                 question,
                 mentionedDocumentIds,
                 ragSettings.getTopK()
-        )
-                : List.of();
+        ) : List.of();// 知识库上下文为空时，返回空列表
+
+        // 限制上下文 chunk 数量，防止 prompt 过长
         List<SearchResultResponse> contextChunks = limitContextChunks(retrievedChunks, ragSettings.getMaxContextChunks());
 
+        // 构造 prompt
         String prompt = contextChunks.isEmpty()
-                ? promptBuilder.buildWithoutSources(question, historyMessages)
-                : promptBuilder.build(question, contextChunks, historyMessages);
+                ? promptBuilder.buildWithoutSources(question, historyMessages)// 无上下文时，要求说明无可引用知识库片段
+                : promptBuilder.build(question, contextChunks, historyMessages);// 有上下文时，包含上下文
+        // 调用模型生成回答
+        /**
+         * @Desc 调用模型生成回答
+         * @param userId 用户 ID
+         * @param prompt 调用模型的 prompt
+         * @param temperature 当前用户 RAG Settings 中的温度
+         * @param modelOverride 本次 Chat 请求选择的模型；只覆盖 model，不覆盖当前用户 Base URL/API Key。
+         * @return
+         */
         String answer = chatModelClient.chat(userId, prompt, ragSettings.getTemperature(), modelOverride);
 
         // 模型 HTTP 调用不放在数据库事务里，避免长事务占用连接。
@@ -121,6 +153,14 @@ public class ChatGenerationService {
         );
     }
 
+    /**
+     * @param sessionId
+     * @param userId
+     * @param generationId
+     * @param answer
+     * @param contextChunks
+     * @Desc 保存成功生成的结果
+     */
     private void saveSuccessfulGeneration(
             Long sessionId,
             Long userId,
@@ -128,7 +168,10 @@ public class ChatGenerationService {
             String answer,
             List<SearchResultResponse> contextChunks
     ) {
+        // 完成会话生成，更新状态为 IDLE
         int updated = chatSessionRepository.finishGeneration(sessionId, userId, generationId, "IDLE", null, true);
+
+//       //打断处理
         if (updated == 0) {
             return;
         }
@@ -139,6 +182,7 @@ public class ChatGenerationService {
         assistantMessage.setContent(answer);
         chatMessageRepository.insert(assistantMessage);
 
+        // 插入消息的引用来源
         if (!contextChunks.isEmpty()) {
             saveSources(assistantMessage.getId(), contextChunks);
         }

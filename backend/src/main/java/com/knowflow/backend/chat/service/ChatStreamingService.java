@@ -32,6 +32,12 @@ import java.util.UUID;
 
 import static com.knowflow.backend.common.model.ModelProviderErrors.safeMessage;
 
+/**
+ * 聊天流服务
+ *
+ * @Desc 处理聊天流相关的操作，如发送消息、接收消息、处理错误等。
+ */
+
 @Service
 public class ChatStreamingService {
     private static final long SSE_TIMEOUT_MS = 10 * 60 * 1000L;
@@ -74,8 +80,8 @@ public class ChatStreamingService {
 
     /**
      * @param sessionId Chat session ID
-     * @param userId 当前 JWT 用户 ID
-     * @param request 用户本轮发送请求
+     * @param userId    当前 JWT 用户 ID
+     * @param request   用户本轮发送请求
      * @return SSE emitter，事件包括 session、user_message、assistant_message、delta、sources、done、error
      * @Desc 阶段 21 流式接口采用 POST + SseEmitter。它和非流式接口共用权限、RAG、模型配置和 activeGenerationId，
      * 但会在模型 delta 到达时持续更新同一条 ASSISTANT 消息，刷新页面可恢复已生成内容。
@@ -83,6 +89,8 @@ public class ChatStreamingService {
     public SseEmitter streamMessage(Long sessionId, Long userId, SendMessageRequest request) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         ChatSession session = getSessionOr404(sessionId, userId);
+
+        // 检查用户是否有权限访问知识库
         accessService.requireMember(session.getKnowledgeBaseId(), userId);
         String question = normalizeContent(request == null ? null : request.getContent());
         String requestedModel = normalizeOptionalModel(request == null ? null : request.getModel());
@@ -91,9 +99,12 @@ public class ChatStreamingService {
         if (requestedModel != null && settingsService.hasCompleteUserModelSettings(userId)) {
             settingsService.updateCurrentModelFromChat(userId, requestedModel);
         }
+
+        // 加载历史消息
         List<ChatMessage> historyMessages = chatService.loadPromptHistoryForStreaming(session, userId);
         String generationId = UUID.randomUUID().toString();
 
+        // 插入用户消息
         ChatMessage userMessage = transactionTemplate.execute(status -> {
             ChatMessage message = new ChatMessage();
             message.setSessionId(session.getId());
@@ -104,15 +115,18 @@ public class ChatStreamingService {
             return message;
         });
 
+        // 发送用户消息和会话信息
         send(emitter, "user_message", new ChatMessageResponse(userMessage, List.of()));
         send(emitter, "session", new ChatSessionResponse(getSessionOr404(session.getId(), userId)));
 
+        // 启动聊天流线程
         Thread streamThread = new Thread(
                 () -> runStream(emitter, session, userId, question, historyMessages, requestedModel, ragEnabled,
                         requestedLimit,
                         request == null ? null : request.getMentionedDocumentIds(), generationId),
                 "knowflow-chat-stream-" + sessionId
         );
+        // 启动聊天流线程
         streamThread.start();
         emitter.onCompletion(() -> cancelIfStillGenerating(sessionId, userId, generationId));
         emitter.onTimeout(() -> cancelIfStillGenerating(sessionId, userId, generationId));
@@ -120,6 +134,19 @@ public class ChatStreamingService {
         return emitter;
     }
 
+    /**
+     * @param emitter
+     * @param session
+     * @param userId
+     * @param question
+     * @param historyMessages
+     * @param requestedModel
+     * @param ragEnabled
+     * @param requestedLimit
+     * @param mentionedDocumentIds
+     * @param generationId
+     * @Desc 运行聊天流
+     */
     private void runStream(
             SseEmitter emitter,
             ChatSession session,
@@ -141,22 +168,26 @@ public class ChatStreamingService {
                     question,
                     mentionedDocumentIds,
                     requestedLimit
-            )
-                    : List.of();
+            ) : List.of();
+
+            // 限制上下文块数量
             List<SearchResultResponse> contextChunks = limitContextChunks(
                     retrievedChunks,
                     Math.min(requestedLimit, ragSettings.getMaxContextChunks())
             );
             String prompt = contextChunks.isEmpty()
-                    ? promptBuilder.buildWithoutSources(question, historyMessages)
-                    : promptBuilder.build(question, contextChunks, historyMessages);
+                    ? promptBuilder.buildWithoutSources(question, historyMessages)// 没有可引用知识库片段时使用的 prompt
+                    : promptBuilder.build(question, contextChunks, historyMessages);// 有可引用知识库片段时使用的 prompt
+            // 启动聊天模型流
             StreamingAccumulator accumulator = new StreamingAccumulator(emitter, session.getId(), userId, generationId);
             chatModelClient.stream(userId, prompt, ragSettings.getTemperature(), requestedModel, accumulator::append);
-            ChatMessageResponse finalMessage = accumulator.finish(contextChunks);
-            ChatSessionResponse finalSession = new ChatSessionResponse(getSessionOr404(session.getId(), userId));
+            ChatMessageResponse finalMessage = accumulator.finish(contextChunks);// 完成聊天流
+            ChatSessionResponse finalSession = new ChatSessionResponse(getSessionOr404(session.getId(), userId));// 获取最终会话信息
+            // 发送最终消息和会话信息
             send(emitter, "sources", finalMessage.getSources());
             send(emitter, "done", new ChatStreamDoneResponse(finalMessage, finalSession));
             emitter.complete();
+
         } catch (RuntimeException exception) {
             String safeMessage = safeMessage(exception);
             transactionTemplate.executeWithoutResult(status ->
@@ -167,6 +198,13 @@ public class ChatStreamingService {
         }
     }
 
+    /**
+     * @Desc 聊天流累加器
+     * emitter
+     * sessionId
+     * userId
+     * generationId
+     */
     private final class StreamingAccumulator {
         private final SseEmitter emitter;
         private final Long sessionId;
@@ -175,6 +213,7 @@ public class ChatStreamingService {
         private final StringBuilder content = new StringBuilder();
         private ChatMessage assistantMessage;
 
+
         private StreamingAccumulator(SseEmitter emitter, Long sessionId, Long userId, String generationId) {
             this.emitter = emitter;
             this.sessionId = sessionId;
@@ -182,28 +221,43 @@ public class ChatStreamingService {
             this.generationId = generationId;
         }
 
+        /**
+         * @Desc 累加聊天流 delta
+         * @param delta
+         */
         private void append(String delta) {
+            // 忽略空 delta
             if (delta == null || delta.isEmpty()) {
                 return;
             }
+            // 检查生成是否已取消
             if (!chatSessionRepository.isActiveGeneration(sessionId, userId, generationId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Generation canceled");
             }
+            // 累加 delta 到内容
             content.append(delta);
+            // 更新助手消息内容
             ChatMessage savedMessage = transactionTemplate.execute(status -> {
+                // 检查生成是否已取消
                 if (!chatSessionRepository.isActiveGeneration(sessionId, userId, generationId)) {
                     return null;
                 }
+                // 更新助手消息内容
                 ChatMessage message = ensureAssistantMessage();
                 chatMessageRepository.updateAssistantContent(message.getId(), sessionId, content.toString());
                 return message;
             });
+            // 检查是否成功更新助手消息内容
             if (savedMessage == null) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Generation canceled");
             }
             send(emitter, "delta", new ChatStreamDeltaResponse(savedMessage.getId(), delta, content.toString()));
         }
 
+        /**
+         * @Desc 确保助手消息存在
+         * @return
+         */
         private ChatMessage ensureAssistantMessage() {
             if (assistantMessage != null) {
                 return assistantMessage;
@@ -220,6 +274,11 @@ public class ChatStreamingService {
             return message;
         }
 
+        /**
+         * @Desc 完成聊天流
+         * @param contextChunks
+         * @return
+         */
         private ChatMessageResponse finish(List<SearchResultResponse> contextChunks) {
             ChatMessage message = transactionTemplate.execute(status -> {
                 int updated = chatSessionRepository.finishGeneration(sessionId, userId, generationId, "IDLE", null, true);
@@ -244,6 +303,12 @@ public class ChatStreamingService {
         }
     }
 
+    /**
+     * @Desc 取消正在生成的聊天流
+     * @param sessionId
+     * @param userId
+     * @param generationId
+     */
     private void cancelIfStillGenerating(Long sessionId, Long userId, String generationId) {
         if (chatSessionRepository.isActiveGeneration(sessionId, userId, generationId)) {
             // 连接异常/刷新/超时只释放生成状态，不删除 partial。
@@ -252,11 +317,22 @@ public class ChatStreamingService {
         }
     }
 
+    /**
+     * @Desc 获取聊天会话
+     * @param sessionId
+     * @param userId
+     * @return
+     */
     private ChatSession getSessionOr404(Long sessionId, Long userId) {
         return chatSessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat session not found"));
     }
 
+    /**
+     * @Desc 归一化内容
+     * @param content
+     * @return
+     */
     private String normalizeContent(String content) {
         if (content == null || content.trim().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is empty");
@@ -264,6 +340,11 @@ public class ChatStreamingService {
         return content.trim();
     }
 
+    /**
+     * @Desc 归一化模型
+     * @param model
+     * @return
+     */
     private String normalizeOptionalModel(String model) {
         if (model == null || model.trim().isBlank()) {
             return null;
@@ -286,6 +367,12 @@ public class ChatStreamingService {
         return Math.min(limit, MAX_LIMIT);
     }
 
+    /**
+     * @Desc 限制上下 chunk 数量
+     * @param chunks
+     * @param maxContextChunks
+     * @return
+     */
     private List<SearchResultResponse> limitContextChunks(List<SearchResultResponse> chunks, int maxContextChunks) {
         if (chunks.size() <= maxContextChunks) {
             return chunks;
@@ -293,6 +380,11 @@ public class ChatStreamingService {
         return chunks.stream().limit(maxContextChunks).toList();
     }
 
+    /**
+     * @Desc 保存上下文 chunk 到数据库
+     * @param messageId
+     * @param chunks
+     */
     private void saveSources(Long messageId, List<SearchResultResponse> chunks) {
         for (SearchResultResponse chunk : chunks) {
             ChatMessageSource source = new ChatMessageSource();
@@ -311,6 +403,12 @@ public class ChatStreamingService {
         }
     }
 
+    /**
+     * @Desc 发送 SSE 事件
+     * @param emitter
+     * @param eventName
+     * @param data
+     */
     private void send(SseEmitter emitter, String eventName, Object data) {
         try {
             emitter.send(SseEmitter.event().name(eventName).data(data));

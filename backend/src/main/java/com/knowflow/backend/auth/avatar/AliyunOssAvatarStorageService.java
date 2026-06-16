@@ -17,6 +17,9 @@ import java.util.UUID;
 
 import static com.knowflow.backend.common.utils.Utils.hasText;
 
+/**
+ * @Desc 头像存储服务实现类 阿里云oss接口
+ */
 @Service
 public class AliyunOssAvatarStorageService implements AvatarStorageService {
     private static final String STORAGE_NOT_CONFIGURED_MESSAGE = "头像上传需要先配置 OSS 存储。";
@@ -37,10 +40,10 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
      */
     @Override
     public String upload(Long userId, MultipartFile file) {
-        ensureConfigured();
-        validateFile(file);
-        String objectKey = buildObjectKey(userId, file.getContentType());
-        OSS client = createClient();
+        ensureConfigured();//未配 OSS
+        validateFile(file); //文件大小/类型校验
+        String objectKey = buildObjectKey(userId, file.getContentType());//生成 "knowflow/avatars/{userId}/{uuid}.{ext}"
+        OSS client = createClient();//创建 OSS 客户端
         try {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(file.getSize());
@@ -89,6 +92,9 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
             if (object == null || object.getObjectContent() == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
             }
+            /**
+             * 读取头像文件内容
+             */
             try (object) {
                 ObjectMetadata metadata = object.getObjectMetadata();
                 String contentType = metadata == null ? null : metadata.getContentType();
@@ -105,6 +111,9 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
         }
     }
 
+    /**
+     * @return 是否已配置 OSS 存储
+     */
     @Override
     public boolean isConfigured() {
         return hasText(properties.getEndpoint())
@@ -113,12 +122,19 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
                 && hasText(properties.getAccessKeySecret());
     }
 
-    private void ensureConfigured() {
+    /**
+     * 确保 OSS 存储已配置
+     */
+       private void ensureConfigured() {
         if (!isConfigured()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, STORAGE_NOT_CONFIGURED_MESSAGE);
         }
     }
 
+    /**
+     * 验证头像文件是否符合要求
+     * @param file
+     */
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "avatar file is required");
@@ -174,19 +190,32 @@ public class AliyunOssAvatarStorageService implements AvatarStorageService {
         }
     }
 
+    /**
+     * @Desc 构建头像对象键
+     * @param userId
+     * @param contentType
+     * @return
+     */
     private String buildObjectKey(Long userId, String contentType) {
         String extension = switch (contentType == null ? "" : contentType.toLowerCase(Locale.ROOT)) {
             case "image/png" -> "png";
             case "image/webp" -> "webp";
             default -> "jpg";
         };
+        // 如 "knowflow/avatars/"
         String prefix = hasText(properties.getAvatarPrefix()) ? properties.getAvatarPrefix().trim() : "knowflow/avatars";
+        // 去掉末尾的斜杠
         while (prefix.endsWith("/")) {
             prefix = prefix.substring(0, prefix.length() - 1);
         }
+        // 生成 "knowflow/avatars/{userId}/{uuid}.{ext}"确保不重复文件名
         return "%s/%d/%s.%s".formatted(prefix, userId, UUID.randomUUID(), extension);
     }
 
+    /**
+     * @Desc 创建阿里云oss客户端
+     * @return OSS客户端
+     */
     private OSS createClient() {
         return new OSSClientBuilder().build(
                 properties.getEndpoint(),

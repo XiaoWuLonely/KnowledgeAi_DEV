@@ -13,6 +13,8 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
+import static com.knowflow.backend.common.utils.Utils.hasText;
+
 /**
  * @Desc 用户模型 API Key 加密服务。API Key 只允许以 AES-GCM 密文落库，明文只在后端调用模型时短暂解密使用。
  */
@@ -94,7 +96,4 @@ public class ModelApiKeyCryptoService {
         }
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
 }

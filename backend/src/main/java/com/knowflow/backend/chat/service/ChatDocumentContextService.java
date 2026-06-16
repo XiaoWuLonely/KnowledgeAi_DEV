@@ -18,12 +18,7 @@ import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 /**
- * Resolves Stage 21 document-aware Chat context.
- *
- * <p>Before this service existed, Chat always searched chunks with the raw user question.
- * That fails when the user references a document by title and asks a generic question such
- * as "讲解一下这个报告". This service first resolves explicit @ mentions and title-like
- * text in the question, then limits RAG context to those documents' chunks.</p>
+ * @Desc 知识库上下文服务
  */
 @Service
 public class ChatDocumentContextService {
@@ -46,15 +41,13 @@ public class ChatDocumentContextService {
     }
 
     /**
-     * @param knowledgeBaseId current Chat session knowledge base
-     * @param userId current JWT user
-     * @param question raw user question
-     * @param mentionedDocumentIds optional document IDs selected by @ mention
-     * @param limit maximum chunks to return
-     * @return chunks that should enter the prompt and be saved as sources
-     * @Desc Mentioned documents have the highest priority. If none are mentioned, title-aware
-     * matching tries to find documents referenced in the question. Only when both are empty does
-     * the method fall back to the existing knowledge-base retrieval path.
+     * @Desc 检索知识库上下文
+     * @param knowledgeBaseId
+     * @param userId
+     * @param question
+     * @param mentionedDocumentIds
+     * @param limit
+     * @return
      */
     public List<SearchResultResponse> resolveContextChunks(
             Long knowledgeBaseId,
@@ -78,10 +71,9 @@ public class ChatDocumentContextService {
     }
 
     /**
-     * @param mentionedDocumentIds IDs sent by the frontend mention picker
-     * @return de-duplicated positive IDs, preserving user selection order
-     * @Desc The frontend is not trusted as an authorization source. This only normalizes shape;
-     * membership and knowledge-base ownership are checked by ensureDocumentsAccessible.
+     * @Desc 归一化提及的文档ID
+     * @param mentionedDocumentIds
+     * @return
      */
     private List<Long> normalizeMentionedDocumentIds(List<Long> mentionedDocumentIds) {
         if (mentionedDocumentIds == null || mentionedDocumentIds.isEmpty()) {
@@ -97,8 +89,10 @@ public class ChatDocumentContextService {
     }
 
     /**
-     * @Desc Invalid or cross-knowledge-base document IDs return 404 instead of exposing whether
-     * the document exists elsewhere. This matches the repository-wide resource hiding rule.
+     * @Desc 确保文档可访问
+     * @param knowledgeBaseId
+     * @param userId
+     * @param documentIds
      */
     private void ensureDocumentsAccessible(Long knowledgeBaseId, Long userId, List<Long> documentIds) {
         List<Document> accessibleDocuments = documentRepository.findAccessibleByKnowledgeBaseId(knowledgeBaseId, userId);
@@ -111,6 +105,13 @@ public class ChatDocumentContextService {
         }
     }
 
+    /**
+     * @Desc 查找标题匹配的文档ID
+     * @param knowledgeBaseId
+     * @param userId
+     * @param question
+     * @return
+     */
     private List<Long> findTitleMatchedDocumentIds(Long knowledgeBaseId, Long userId, String question) {
         String normalizedQuestion = normalizeTitleText(question);
         if (normalizedQuestion.length() < MIN_TITLE_MATCH_LENGTH) {
@@ -126,9 +127,10 @@ public class ChatDocumentContextService {
     }
 
     /**
-     * @Desc Matches uploaded names such as "202502150239_邓林峰_《微服务核心组件实验》实验报告 (2).docx"
-     * against user text such as "跟我讲解一下《微服务核心组件实验》实验报告". Prefix numbers,
-     * copy suffixes, extensions, separators and book-title marks are removed before matching.
+     * @Desc 匹配标题是否与用户问题匹配
+     * @param normalizedQuestion
+     * @param originalFilename
+     * @return
      */
     private boolean titleMatches(String normalizedQuestion, String originalFilename) {
         for (String normalizedTitle : normalizedTitleCandidates(originalFilename)) {
@@ -168,6 +170,11 @@ public class ChatDocumentContextService {
                 .toList();
     }
 
+    /**
+     * @Desc 归一化标题文本
+     * @param value
+     * @return
+     */
     private String normalizeTitleText(String value) {
         if (value == null) {
             return "";

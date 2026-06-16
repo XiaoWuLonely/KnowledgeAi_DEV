@@ -28,16 +28,33 @@ public class SettingsController {
         this.settingsService = settingsService;
     }
 
+    /**
+     * @desc 获取当前用户模型配置
+     * @param jwt
+     * @return
+     */
     @GetMapping("/model")
     public ModelSettingsResponse getModelSettings(@AuthenticationPrincipal Jwt jwt) {
         return settingsService.getModelSettings(getCurrent(jwt));
     }
 
+    /**
+     * @desc 更新当前用户模型配置
+     * @param request
+     * @param jwt
+     * @return
+     */
     @PatchMapping("/model")
     public ModelSettingsResponse updateModelSettings(@RequestBody UpdateModelSettingsRequest request, @AuthenticationPrincipal Jwt jwt) {
         return settingsService.updateModelSettings(getCurrent(jwt), request);
     }
 
+    /**
+     * @desc 获取当前用户可用的模型列表
+     * @param request
+     * @param jwt
+     * @return
+     */
     @PostMapping("/model/models")
     public ModelListResponse fetchModels(@RequestBody FetchModelListRequest request, @AuthenticationPrincipal Jwt jwt) {
         return settingsService.fetchModels(getCurrent(jwt), request);
@@ -55,11 +72,22 @@ public class SettingsController {
         return settingsService.testModelConnection(getCurrent(jwt), request);
     }
 
+    /**
+     * @desc 获取当前用户偏好设置
+     * @param jwt
+     * @return
+     */
     @GetMapping("/preferences")
     public UserPreferenceResponse getPreferences(@AuthenticationPrincipal Jwt jwt) {
         return settingsService.getPreferences(getCurrent(jwt));
     }
 
+    /**
+     * @desc 更新当前用户偏好设置
+     * @param request
+     * @param jwt
+     * @return
+     */
     @PatchMapping("/preferences")
     public UserPreferenceResponse updatePreferences(@RequestBody UpdateUserPreferenceRequest request, @AuthenticationPrincipal Jwt jwt) {
         return settingsService.updatePreferences(getCurrent(jwt), request);
@@ -67,7 +95,6 @@ public class SettingsController {
 
     /**
      * 获取用户RAG设置
-     *
      * @param jwt
      * @return
      */

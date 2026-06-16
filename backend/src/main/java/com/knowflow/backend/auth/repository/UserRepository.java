@@ -1,6 +1,6 @@
-package com.knowflow.backend.user.repository;
+package com.knowflow.backend.auth.repository;
 
-import com.knowflow.backend.user.entity.User;
+import com.knowflow.backend.auth.entity.User;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
