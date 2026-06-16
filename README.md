@@ -203,13 +203,6 @@ cd backend
 .\mvnw.cmd -DskipTests package
 ```
 
-后端测试：
-
-```powershell
-cd backend
-.\mvnw.cmd test
-```
-
 ## 环境变量说明
 
 | 变量                               | 默认/示例              | 说明                                                          |
@@ -280,11 +273,9 @@ Chat 没有真实模型输出：
 
 ## 主要文档
 
-- [项目概览](doc/PROJECT.md)
-- [阶段计划](doc/STAGE_PLAN.md)
-- [API 契约](doc/API.md)
-- [前端任务记录](doc/FRONTEND_TASK.md)
-- [后端任务记录](doc/BACKEND_TASK.md)
+- [需求分析](doc/需求分析.md)
+- [数据库设计](doc/数据库设计.md)
+- [后端微服务及系统设计](doc/后端微服务及系统设计.md)
 
 ## License
 
