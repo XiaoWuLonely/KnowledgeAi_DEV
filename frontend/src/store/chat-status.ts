@@ -55,7 +55,10 @@ export const useChatStatusStore = create<ChatStatusState>((set, get) => ({
           try {
             return await getKnowledgeBaseChatSessions(knowledgeBase.id);
           } catch (error) {
-            if (isAxiosError(error) && [403, 404].includes(error.response?.status ?? 0)) {
+            if (
+              isAxiosError(error) &&
+              [403, 404].includes(error.response?.status ?? 0)
+            ) {
               return [];
             }
 
@@ -63,7 +66,9 @@ export const useChatStatusStore = create<ChatStatusState>((set, get) => ({
           }
         }),
       );
-      const unreadCount = sessionGroups.flat().filter((session) => session.unread).length;
+      const unreadCount = sessionGroups
+        .flat()
+        .filter((session) => session.unread).length;
 
       set({ unreadCount });
     } catch (error) {

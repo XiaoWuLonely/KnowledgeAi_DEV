@@ -49,6 +49,13 @@
 			<artifactId>pdfbox</artifactId>
 			<version>3.0.7</version>
 		</dependency>
+		<!-- Apache HttpClient 5: build RestClient with connect/socket timeouts for AI model calls.
+		     Socket timeout is per-read idle semantics, so SSE streaming answers are not killed by a
+		     total-request deadline the way a JDK HttpClient read timeout would. -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
 		<!-- MyBatis: SQL mapper based database access. -->
 		<dependency>
 			<groupId>org.mybatis.spring.boot</groupId>

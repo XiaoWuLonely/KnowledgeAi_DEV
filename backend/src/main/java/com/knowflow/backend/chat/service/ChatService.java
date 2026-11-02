@@ -36,6 +36,7 @@ public class ChatService {
     private static final int MAX_HISTORY_MESSAGES = 6;
     private static final int MAX_HISTORY_TOTAL_CHARS = 3000;
     private static final int MAX_HISTORY_SINGLE_MESSAGE_CHARS = 800;
+    private static final int MAX_QUESTION_CHARS = 4000;
 
     private final KnowledgeBaseAccessService accessService;
     private final DocumentChunkRepository documentChunkRepository;
@@ -254,7 +255,11 @@ public class ChatService {
 
         // 先保存用户消息并把会话置为生成中，activeGenerationId 是本次后台任务的“写入许可”。
         // 用户点击“打断”会清空它，旧任务返回后也不能再写入助手消息或覆盖状态。
-        chatSessionRepository.beginGeneration(session.getId(), userId, activeGenerationId);
+        // 受控更新：若会话已在生成中，返回 0 行并回滚本次 USER 消息，避免覆盖上一个生成导致“有问无答”。
+        int generationRows = chatSessionRepository.beginGeneration(session.getId(), userId, activeGenerationId);
+        if (generationRows != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "该会话正在生成回答，请等待完成或先打断");
+        }
 
         chatGenerationService.generate(
                 session.getId(),
@@ -352,7 +357,11 @@ public class ChatService {
         if (content == null || content.trim().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is empty");
         }
-        return content.trim();
+        String normalized = content.trim();
+        if (normalized.length() > MAX_QUESTION_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is too long");
+        }
+        return normalized;
     }
 
     /**

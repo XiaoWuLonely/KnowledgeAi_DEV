@@ -1,6 +1,11 @@
 spring:
   application:
     name: knowflow-backend
+  servlet:
+    multipart:
+      # 上传文档大小上限，与 DocumentController.MAX_FILE_SIZE_BYTES 保持一致；Spring 默认 1MB 会提前拦截大文件。
+      max-file-size: 10MB
+      max-request-size: 12MB
   config:
     import: optional:file:../.env[.properties],optional:file:.env[.properties]
   profiles:
@@ -44,10 +49,16 @@ knowflow:
     api-key: ${KNOWFLOW_AI_API_KEY:}
     model: ${KNOWFLOW_AI_MODEL:}
     embedding-model: ${KNOWFLOW_AI_EMBEDDING_MODEL:}
+    embedding-base-url: ${KNOWFLOW_AI_EMBEDDING_BASE_URL:}
+    embedding-api-key: ${KNOWFLOW_AI_EMBEDDING_API_KEY:}
     timeout-seconds: ${KNOWFLOW_AI_TIMEOUT_SECONDS:60}
   model:
     # 用户模型 API Key 的加密密钥；正式部署时通过环境变量提供，不能写死生产密钥。
     secret-key: ${KNOWFLOW_MODEL_SECRET_KEY:}
+  documents:
+    processing:
+      # 上传/重处理/语义重建默认走后台异步，请求快速返回；测试环境可设 false 以同步执行。
+      async-enabled: ${KNOWFLOW_DOCUMENTS_ASYNC_ENABLED:true}
   oss:
     # 用户头像存储在阿里云 OSS。bucket 可以和其他项目共用，但必须使用独立前缀隔离 KnowFlow 对象。
     endpoint: ${KNOWFLOW_OSS_ENDPOINT:}

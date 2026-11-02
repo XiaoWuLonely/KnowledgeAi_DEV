@@ -40,6 +40,7 @@ public class DocumentProcessingJobService {
     private static final String EMBEDDING_STATUS_FAILED = "FAILED";
     private static final int CHUNK_SIZE = 1000;
     private static final int CHUNK_OVERLAP = 150;
+    private static final int EMBEDDING_BATCH_SIZE = 64;
     private static final String NO_REPROCESS_SOURCE_MESSAGE =
             "Document cannot be reprocessed because no source or indexed text is available";
     private static final Set<String> RETRYABLE_STATUSES = Set.of(JOB_STATUS_FAILED, JOB_STATUS_CANCELED);
@@ -400,9 +401,16 @@ public class DocumentProcessingJobService {
             return new EmbeddingWritePlan(EMBEDDING_STATUS_SKIPPED, null, List.of());
         }
         try {
-            List<List<Double>> vectors = embeddingModelClient.embed(userId, chunks);
-            if (vectors.size() != chunks.size()) {
-                return new EmbeddingWritePlan(EMBEDDING_STATUS_FAILED, "Embedding generation failed", List.of());
+            // 大文档会切出成千上万个 chunk，一次全量请求容易超时/超限，这里按固定批次逐批生成再按序拼回。
+            List<List<Double>> vectors = new ArrayList<>(chunks.size());
+            for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
+                int end = Math.min(start + EMBEDDING_BATCH_SIZE, chunks.size());
+                List<String> batch = chunks.subList(start, end);
+                List<List<Double>> batchVectors = embeddingModelClient.embed(userId, batch);
+                if (batchVectors == null || batchVectors.size() != batch.size()) {
+                    return new EmbeddingWritePlan(EMBEDDING_STATUS_FAILED, "Embedding generation failed", List.of());
+                }
+                vectors.addAll(batchVectors);
             }
             return new EmbeddingWritePlan(EMBEDDING_STATUS_INDEXED, null, vectors);
         } catch (RuntimeException exception) {

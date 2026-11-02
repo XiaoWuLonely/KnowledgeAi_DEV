@@ -59,15 +59,38 @@ public class ChatDocumentContextService {
         List<Long> explicitDocumentIds = normalizeMentionedDocumentIds(mentionedDocumentIds);
         if (!explicitDocumentIds.isEmpty()) {
             ensureDocumentsAccessible(knowledgeBaseId, userId, explicitDocumentIds);
-            return documentChunkRepository.findIndexedChunksByDocumentIds(knowledgeBaseId, userId, explicitDocumentIds, limit);
+            return resolveRankedOrSampled(knowledgeBaseId, userId, question, explicitDocumentIds, limit);
         }
 
         List<Long> titleMatchedDocumentIds = findTitleMatchedDocumentIds(knowledgeBaseId, userId, question);
         if (!titleMatchedDocumentIds.isEmpty()) {
-            return documentChunkRepository.findIndexedChunksByDocumentIds(knowledgeBaseId, userId, titleMatchedDocumentIds, limit);
+            return resolveRankedOrSampled(knowledgeBaseId, userId, question, titleMatchedDocumentIds, limit);
         }
 
         return documentRetrievalService.search(knowledgeBaseId, userId, question, limit);
+    }
+
+    /**
+     * @Desc 指定文档后优先按问题相关度排序；无相关信号（例如 FULLTEXT 模式且问题不含正文关键词）时
+     * 回退到文档内均匀采样，避免长文档只返回开头 chunk。
+     */
+    private List<SearchResultResponse> resolveRankedOrSampled(
+            Long knowledgeBaseId,
+            Long userId,
+            String question,
+            List<Long> documentIds,
+            Integer limit
+    ) {
+        List<SearchResultResponse> ranked = documentRetrievalService.searchByDocumentIds(
+                knowledgeBaseId, userId, question, documentIds, limit);
+        if (!ranked.isEmpty()) {
+            return ranked;
+        }
+        return documentChunkRepository.findSampledIndexedChunksByDocumentIds(
+                knowledgeBaseId,
+                userId,
+                DocumentRetrievalService.toBigIntArrayLiteral(documentIds),
+                limit);
     }
 
     /**
