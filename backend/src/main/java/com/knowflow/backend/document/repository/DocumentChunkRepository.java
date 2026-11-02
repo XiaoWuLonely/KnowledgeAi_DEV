@@ -120,6 +120,9 @@ public interface DocumentChunkRepository {
     @Select("""
             WITH search_query AS (
                 SELECT websearch_to_tsquery('simple', #{query}) AS ts_query
+            ),
+            doc_filter AS (
+                SELECT COALESCE(#{documentIds}::bigint[], '{}'::bigint[]) AS ids
             )
             SELECT
                 c.id AS chunk_id,
@@ -157,10 +160,12 @@ public interface DocumentChunkRepository {
               ON m.knowledge_base_id = kb.id
              AND m.user_id = #{userId}
             CROSS JOIN search_query
+            CROSS JOIN doc_filter
             WHERE c.knowledge_base_id = #{knowledgeBaseId}
               AND d.knowledge_base_id = #{knowledgeBaseId}
               AND d.status = 'INDEXED'
               AND (kb.created_by = #{userId} OR m.user_id = #{userId})
+              AND (c.document_id = ANY(doc_filter.ids) OR cardinality(doc_filter.ids) = 0)
               AND (
                     to_tsvector('simple', c.content) @@ search_query.ts_query
                     OR position(lower(#{query}) in lower(c.content)) > 0
@@ -172,52 +177,64 @@ public interface DocumentChunkRepository {
             @Param("knowledgeBaseId") Long knowledgeBaseId,
             @Param("userId") Long userId,
             @Param("query") String query,
+            @Param("documentIds") String documentIds,
             @Param("limit") Integer limit);
 
     /**
      * @param knowledgeBaseId 当前 Chat 会话绑定的知识库 ID
      * @param userId 当前 JWT 用户 ID，用于复用知识库成员权限隔离
-     * @param documentIds @ mention 或标题感知命中的文档 ID 列表
+     * @param documentIds @ mention 或标题感知命中的文档 ID（PostgreSQL bigint[] 字面量）
      * @param limit 最多返回多少个 chunk
-     * @return 指定文档的前若干 chunk，按文档和 chunk 顺序排列
-     * @Desc 阶段 21 修复“按文件标题指定文档但问题本身缺少正文关键词”的场景。
-     * 与全文检索不同，这里不再要求 query 命中 chunk 内容，而是把用户明确指定的文档片段直接作为 RAG 上下文。
+     * @return 指定文档内均匀采样的 chunk（每篇文档取首尾 + 等距分块），避免长文档只返回开头
+     * @Desc 这是相关性检索无信号时的兜底路径。正常情况 Chat 会先走带 documentIds 过滤的
+     * searchByDocumentIds 按问题相关度排序，只有 FULLTEXT 模式且问题不含正文关键词时才落到这里。
      */
     @Select("""
-            <script>
-            SELECT
-                c.id AS chunk_id,
-                c.document_id,
-                d.original_filename AS document_name,
-                c.chunk_index,
-                c.content,
-                CAST(1.0 AS double precision) AS score,
-                CAST(1.0 AS double precision) AS hybrid_score,
-                CAST(1.0 AS double precision) AS fulltext_score,
-                CAST(0.0 AS double precision) AS semantic_score,
-                'MENTION' AS retrieval_mode
-            FROM document_chunks c
-            JOIN documents d ON d.id = c.document_id
-            JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id
-            LEFT JOIN knowledge_base_members m
-              ON m.knowledge_base_id = kb.id
-             AND m.user_id = #{userId}
-            WHERE c.knowledge_base_id = #{knowledgeBaseId}
-              AND d.knowledge_base_id = #{knowledgeBaseId}
-              AND d.status = 'INDEXED'
-              AND (kb.created_by = #{userId} OR m.user_id = #{userId})
-              AND c.document_id IN
-              <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
-                #{documentId}
-              </foreach>
-            ORDER BY d.updated_at DESC, d.id DESC, c.chunk_index ASC, c.id ASC
+            WITH doc_filter AS (
+                SELECT #{documentIds}::bigint[] AS ids
+            ),
+            ranked AS (
+                SELECT c.id AS chunk_id,
+                       c.document_id,
+                       d.original_filename AS document_name,
+                       c.chunk_index,
+                       c.content,
+                       row_number() OVER (PARTITION BY c.document_id ORDER BY c.chunk_index ASC) AS rn,
+                       count(*) OVER (PARTITION BY c.document_id) AS total
+                FROM document_chunks c
+                JOIN documents d ON d.id = c.document_id
+                JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id
+                LEFT JOIN knowledge_base_members m
+                  ON m.knowledge_base_id = kb.id
+                 AND m.user_id = #{userId}
+                CROSS JOIN doc_filter
+                WHERE c.knowledge_base_id = #{knowledgeBaseId}
+                  AND d.knowledge_base_id = #{knowledgeBaseId}
+                  AND d.status = 'INDEXED'
+                  AND (kb.created_by = #{userId} OR m.user_id = #{userId})
+                  AND c.document_id = ANY(doc_filter.ids)
+            )
+            SELECT chunk_id,
+                   document_id,
+                   document_name,
+                   chunk_index,
+                   content,
+                   CAST(1.0 AS double precision) AS score,
+                   CAST(1.0 AS double precision) AS hybrid_score,
+                   CAST(0.0 AS double precision) AS fulltext_score,
+                   CAST(0.0 AS double precision) AS semantic_score,
+                   'MENTION' AS retrieval_mode
+            FROM ranked
+            WHERE rn = 1
+               OR rn = total
+               OR (rn - 1) % GREATEST(1, (total + #{limit} - 1) / #{limit}) = 0
+            ORDER BY document_id ASC, chunk_index ASC
             LIMIT #{limit}
-            </script>
             """)
-    List<SearchResultResponse> findIndexedChunksByDocumentIds(
+    List<SearchResultResponse> findSampledIndexedChunksByDocumentIds(
             @Param("knowledgeBaseId") Long knowledgeBaseId,
             @Param("userId") Long userId,
-            @Param("documentIds") List<Long> documentIds,
+            @Param("documentIds") String documentIds,
             @Param("limit") Integer limit);
 
     /**
@@ -239,6 +256,9 @@ public interface DocumentChunkRepository {
             query_embedding AS (
                 SELECT #{queryEmbedding}::vector AS embedding
             ),
+            doc_filter AS (
+                SELECT COALESCE(#{documentIds}::bigint[], '{}'::bigint[]) AS ids
+            ),
             accessible_chunks AS (
                 SELECT c.id,
                        c.document_id,
@@ -258,6 +278,7 @@ public interface DocumentChunkRepository {
                   AND d.knowledge_base_id = #{knowledgeBaseId}
                   AND d.status = 'INDEXED'
                   AND (kb.created_by = #{userId} OR m.user_id = #{userId})
+                  AND (c.document_id = ANY(doc_filter.ids) OR cardinality(doc_filter.ids) = 0)
             ),
             fulltext AS (
                 SELECT c.id AS chunk_id,
@@ -289,7 +310,13 @@ public interface DocumentChunkRepository {
                        c.content,
                        c.updated_at,
                        COALESCE(f.fulltext_score, 0.0) AS fulltext_score,
-                       COALESCE(s.semantic_score, 0.0) AS semantic_score
+                       COALESCE(s.semantic_score, 0.0) AS semantic_score,
+                       -- 把 ts_rank 归一化到候选集内的 [0,1]，避免全文得分的绝对幅度被“是否命中”的二值化丢弃。
+                       CASE WHEN COALESCE(f.fulltext_score, 0.0) > 0.0
+                            THEN COALESCE(f.fulltext_score, 0.0)
+                                 / NULLIF(MAX(COALESCE(f.fulltext_score, 0.0)) OVER (), 0.0)
+                            ELSE 0.0
+                       END AS fulltext_norm
                 FROM accessible_chunks c
                 LEFT JOIN fulltext f ON f.chunk_id = c.id
                 LEFT JOIN semantic s ON s.chunk_id = c.id
@@ -302,11 +329,11 @@ public interface DocumentChunkRepository {
                    content,
                    CAST((
                        semantic_score * #{semanticWeight}
-                       + CASE WHEN fulltext_score > 0.0 THEN 1.0 ELSE 0.0 END * #{fulltextWeight}
+                       + fulltext_norm * #{fulltextWeight}
                    ) AS double precision) AS score,
                    CAST((
                        semantic_score * #{semanticWeight}
-                       + CASE WHEN fulltext_score > 0.0 THEN 1.0 ELSE 0.0 END * #{fulltextWeight}
+                       + fulltext_norm * #{fulltextWeight}
                    ) AS double precision) AS hybrid_score,
                    fulltext_score,
                    semantic_score,
@@ -320,6 +347,7 @@ public interface DocumentChunkRepository {
             @Param("userId") Long userId,
             @Param("query") String query,
             @Param("queryEmbedding") String queryEmbedding,
+            @Param("documentIds") String documentIds,
             @Param("limit") Integer limit,
             @Param("semanticWeight") Double semanticWeight,
             @Param("fulltextWeight") Double fulltextWeight);

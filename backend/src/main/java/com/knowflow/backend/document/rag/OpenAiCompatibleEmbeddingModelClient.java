@@ -1,12 +1,12 @@
 package com.knowflow.backend.document.rag;
 
 import com.knowflow.backend.config.AiProperties;
+import com.knowflow.backend.config.ModelRestClientFactory;
 import com.knowflow.backend.settings.entity.UserModelSettings;
 import com.knowflow.backend.settings.repository.UserModelSettingsRepository;
 import com.knowflow.backend.settings.security.ModelApiKeyCryptoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -39,16 +39,19 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
     private final UserModelSettingsRepository userModelSettingsRepository;
     private final ModelApiKeyCryptoService cryptoService;
     private final ObjectMapper objectMapper;
+    private final ModelRestClientFactory modelRestClientFactory;
 
     public OpenAiCompatibleEmbeddingModelClient(
             AiProperties properties,
             UserModelSettingsRepository userModelSettingsRepository,
             ModelApiKeyCryptoService cryptoService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ModelRestClientFactory modelRestClientFactory) {
         this.properties = properties;
         this.userModelSettingsRepository = userModelSettingsRepository;
         this.cryptoService = cryptoService;
         this.objectMapper = objectMapper;
+        this.modelRestClientFactory = modelRestClientFactory;
     }
 
     @Override
@@ -64,10 +67,7 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
         EffectiveEmbeddingConfig config = resolveConfig(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Embedding model config is incomplete"));
         try {
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(config.baseUrl())
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + config.apiKey())
-                    .build();
+            RestClient restClient = modelRestClientFactory.create(config.baseUrl(), config.apiKey(), config.timeoutSeconds());
 
             byte[] responseBody = restClient.post()
                     .uri("/embeddings")
@@ -98,6 +98,15 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
         if (!hasText(properties.getEmbeddingModel())) {
             return Optional.empty();
         }
+        // 独立 Embedding 服务配置（与聊天 LLM 分离）；配置后语义向量固定走该服务。
+        if (hasText(properties.getEmbeddingBaseUrl()) && hasText(properties.getEmbeddingApiKey())) {
+            return Optional.of(new EffectiveEmbeddingConfig(
+                    normalizeBaseUrl(properties.getEmbeddingBaseUrl()),
+                    properties.getEmbeddingApiKey().trim(),
+                    properties.getEmbeddingModel().trim(),
+                    resolveTimeout(properties.getTimeoutSeconds())
+            ));
+        }
         Optional<EffectiveEmbeddingConfig> userConfig = userModelSettingsRepository.findByUserId(userId)
                 .filter(settings -> hasText(settings.getBaseUrl()) && hasText(settings.getEncryptedApiKey()))
                 .flatMap(this::fromUserSettings);
@@ -110,7 +119,8 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
         return Optional.of(new EffectiveEmbeddingConfig(
                 normalizeBaseUrl(properties.getBaseUrl()),
                 properties.getApiKey().trim(),
-                properties.getEmbeddingModel().trim()
+                properties.getEmbeddingModel().trim(),
+                resolveTimeout(properties.getTimeoutSeconds())
         ));
     }
 
@@ -119,7 +129,8 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
             return Optional.of(new EffectiveEmbeddingConfig(
                     normalizeBaseUrl(settings.getBaseUrl()),
                     cryptoService.decrypt(settings.getEncryptedApiKey()),
-                    properties.getEmbeddingModel().trim()
+                    properties.getEmbeddingModel().trim(),
+                    resolveTimeout(settings.getTimeoutSeconds())
             ));
         } catch (RuntimeException exception) {
             log.warn("Saved user model settings cannot be used for embeddings: userId={}, errorType={}",
@@ -147,16 +158,16 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
                 path = path.substring(0, path.length() - "/embeddings".length());
             }
             path = trimTrailingSlash(path);
-            if (!path.endsWith("/v1")) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Embedding model config is incomplete");
+            if (path.isEmpty()) {
+                path = "/v1";
             }
             return new URI(
                     uri.getScheme() == null ? null : uri.getScheme().toLowerCase(),
-                    uri.getUserInfo(),
+                    null,
                     uri.getHost(),
                     uri.getPort(),
                     path,
-                    null,
+                    uri.getRawQuery(),
                     null
             ).toString();
         } catch (URISyntaxException exception) {
@@ -184,7 +195,20 @@ public class OpenAiCompatibleEmbeddingModelClient implements EmbeddingModelClien
         }
     }
 
-    private record EffectiveEmbeddingConfig(String baseUrl, String apiKey, String model) {
+    private record EffectiveEmbeddingConfig(String baseUrl, String apiKey, String model, int timeoutSeconds) {
+    }
+
+    /**
+     * @param configuredTimeout 配置的超时秒数，可能为空或 <=0
+     * @return 有效超时秒数；无效时回退环境级默认，最后兜底 60 秒
+     */
+    private int resolveTimeout(Integer configuredTimeout) {
+        if (configuredTimeout != null && configuredTimeout > 0) {
+            return configuredTimeout;
+        }
+        return properties.getTimeoutSeconds() == null || properties.getTimeoutSeconds() <= 0
+                ? 60
+                : properties.getTimeoutSeconds();
     }
 
     private record EmbeddingRequest(String model, List<String> input) {

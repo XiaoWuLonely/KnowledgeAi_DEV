@@ -2,6 +2,7 @@ package com.knowflow.backend.settings.service;
 
 
 import com.knowflow.backend.config.AiProperties;
+import com.knowflow.backend.config.ModelRestClientFactory;
 import com.knowflow.backend.settings.dto.request.FetchModelListRequest;
 import com.knowflow.backend.settings.dto.request.TestModelConnectionRequest;
 import com.knowflow.backend.settings.dto.request.UpdateModelSettingsRequest;
@@ -21,7 +22,6 @@ import com.knowflow.backend.settings.repository.UserRagSettingsRepository;
 import com.knowflow.backend.settings.security.ModelApiKeyCryptoService;
 import lombok.AllArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +69,7 @@ public class SettingsService {
     private final UserPreferenceRepository userPreferenceRepository;
     private final ModelApiKeyCryptoService cryptoService;
     private final ObjectMapper objectMapper;
+    private final ModelRestClientFactory modelRestClientFactory;
 
 
     /**
@@ -129,10 +130,7 @@ public class SettingsService {
         String apiKey = resolveModelListApiKey(request, savedSettings);
 
         try {
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(baseUrl)
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .build();
+            RestClient restClient = modelRestClientFactory.create(baseUrl, apiKey, resolveTimeoutSeconds(savedSettings));
             OpenAiModelsResponse response = restClient.get()
                     .uri("/models")
                     .retrieve()
@@ -164,10 +162,7 @@ public class SettingsService {
         String model = normalizeRequiredText(resolveModelTestModel(request, savedSettings), "model");
 
         try {
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(baseUrl)
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .build();
+            RestClient restClient = modelRestClientFactory.create(baseUrl, apiKey, resolveTimeoutSeconds(savedSettings));
             byte[] responseBody = restClient.post()
                     .uri("/chat/completions")
                     .body(new OpenAiChatCompletionRequest(
@@ -447,6 +442,19 @@ public class SettingsService {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * @param savedSettings 当前用户已保存的模型配置，可能为 null
+     * @return 拉取模型列表 / 连接测试使用的有效超时秒数；用户未配置时回退环境级默认，最后兜底 60 秒
+     */
+    private int resolveTimeoutSeconds(UserModelSettings savedSettings) {
+        Integer configured = savedSettings == null ? null : savedSettings.getTimeoutSeconds();
+        if (configured != null && configured > 0) {
+            return configured;
+        }
+        Integer env = aiProperties.getTimeoutSeconds();
+        return env == null || env <= 0 ? 60 : env;
+    }
+
     private ModelSettingsResponse toModelSettingsResponse(UserModelSettings settings) {
         boolean baseUrlConfigured = hasText(settings.getBaseUrl());
         boolean apiKeyConfigured = hasText(settings.getEncryptedApiKey());
@@ -471,9 +479,10 @@ public class SettingsService {
 
     /**
      * @param value 用户在 Settings 中填写的模型服务地址
-     * @return OpenAI-compatible 根地址，固定为 scheme://host[:port]/v1 这类格式
-     * @Desc Chat 客户端会在根地址后追加 /chat/completions。与旧逻辑直接保存原字符串不同，
-     * 这里会把误填的完整 /chat/completions 地址规范化回 /v1，并拒绝缺少 /v1 的地址，避免静默拼成错误 URL。
+     * @return OpenAI-compatible 根地址；调用方会在其后追加 /chat/completions 或 /models
+     * @Desc 与旧逻辑“强制 /v1 结尾”不同，现在只做防御性规范化：去掉误填的完整 /chat/completions，
+     * 主机名后无路径时自动补 /v1；非空路径（如 Azure 的 /openai/deployments/...）原样保留，
+     * 并保留原始 query（如 ?api-version=...），从而兼容自定义网关和 Azure 等不以 /v1 结尾的地址。
      */
     private String normalizeModelBaseUrl(String value) {
         String rawBaseUrl = normalizeRequiredText(value, "baseUrl");
@@ -492,18 +501,18 @@ public class SettingsService {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - "/chat/completions".length());
         }
         normalizedPath = trimTrailingSlash(normalizedPath);
-        if (!normalizedPath.endsWith("/v1")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "baseUrl must be an OpenAI-compatible root ending with /v1");
+        if (normalizedPath.isEmpty()) {
+            normalizedPath = "/v1";
         }
 
         try {
             return new URI(
                     uri.getScheme().toLowerCase(),
-                    uri.getUserInfo(),
+                    null,
                     uri.getHost(),
                     uri.getPort(),
                     normalizedPath,
-                    null,
+                    uri.getRawQuery(),
                     null
             ).toString();
         } catch (URISyntaxException exception) {

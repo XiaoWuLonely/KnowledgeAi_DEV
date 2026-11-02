@@ -19,6 +19,7 @@ import com.knowflow.backend.document.dto.response.SearchResultResponse;
 import com.knowflow.backend.knowledgebase.service.KnowledgeBaseAccessService;
 import com.knowflow.backend.settings.entity.UserRagSettings;
 import com.knowflow.backend.settings.service.SettingsService;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -43,6 +44,7 @@ public class ChatStreamingService {
     private static final long SSE_TIMEOUT_MS = 10 * 60 * 1000L;
     private static final int DEFAULT_LIMIT = 5;
     private static final int MAX_LIMIT = 20;
+    private static final int MAX_QUESTION_CHARS = 4000;
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -54,6 +56,7 @@ public class ChatStreamingService {
     private final ChatModelClient chatModelClient;
     private final ChatService chatService;
     private final TransactionTemplate transactionTemplate;
+    private final TaskExecutor taskExecutor;
 
     public ChatStreamingService(
             ChatSessionRepository chatSessionRepository,
@@ -65,7 +68,8 @@ public class ChatStreamingService {
             PromptBuilder promptBuilder,
             ChatModelClient chatModelClient,
             ChatService chatService,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            TaskExecutor taskExecutor) {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.chatMessageSourceRepository = chatMessageSourceRepository;
@@ -76,6 +80,7 @@ public class ChatStreamingService {
         this.chatModelClient = chatModelClient;
         this.chatService = chatService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.taskExecutor = taskExecutor;
     }
 
     /**
@@ -111,7 +116,11 @@ public class ChatStreamingService {
             message.setRole("USER");
             message.setContent(question);
             chatMessageRepository.insert(message);
-            chatSessionRepository.beginGeneration(session.getId(), userId, generationId);
+            // 受控更新：会话已在生成中时返回 0 行，抛 409 回滚本次 USER 消息。
+            int generationRows = chatSessionRepository.beginGeneration(session.getId(), userId, generationId);
+            if (generationRows != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "该会话正在生成回答，请等待完成或先打断");
+            }
             return message;
         });
 
@@ -119,15 +128,11 @@ public class ChatStreamingService {
         send(emitter, "user_message", new ChatMessageResponse(userMessage, List.of()));
         send(emitter, "session", new ChatSessionResponse(getSessionOr404(session.getId(), userId)));
 
-        // 启动聊天流线程
-        Thread streamThread = new Thread(
+        // 提交到 Spring 管理的线程池执行，避免每个流式请求都创建一个裸线程。
+        taskExecutor.execute(
                 () -> runStream(emitter, session, userId, question, historyMessages, requestedModel, ragEnabled,
                         requestedLimit,
-                        request == null ? null : request.getMentionedDocumentIds(), generationId),
-                "knowflow-chat-stream-" + sessionId
-        );
-        // 启动聊天流线程
-        streamThread.start();
+                        request == null ? null : request.getMentionedDocumentIds(), generationId));
         emitter.onCompletion(() -> cancelIfStillGenerating(sessionId, userId, generationId));
         emitter.onTimeout(() -> cancelIfStillGenerating(sessionId, userId, generationId));
         emitter.onError(error -> cancelIfStillGenerating(sessionId, userId, generationId));
@@ -189,6 +194,15 @@ public class ChatStreamingService {
             emitter.complete();
 
         } catch (RuntimeException exception) {
+            if (isConnectionClosed(exception)) {
+                // 客户端断开/刷新只释放生成状态、保留 partial，不能误标 FAILED；也不推 error（连接已不存在）。
+                chatSessionRepository.clearGenerationIfActive(session.getId(), userId, generationId);
+                return;
+            }
+            if (!chatSessionRepository.isActiveGeneration(session.getId(), userId, generationId)) {
+                // 用户已主动打断，cancelGeneration 已清理状态和 partial，这里什么都不做。
+                return;
+            }
             String safeMessage = safeMessage(exception);
             transactionTemplate.executeWithoutResult(status ->
                     chatSessionRepository.finishGeneration(session.getId(), userId, generationId, "FAILED", safeMessage, true)
@@ -196,6 +210,26 @@ public class ChatStreamingService {
             send(emitter, "error", new ChatStreamErrorResponse(safeMessage));
             emitter.complete();
         }
+    }
+
+    /**
+     * @param exception 流式链路抛出的异常
+     * @return true 表示失败源于 SSE 连接被客户端关闭，而不是模型调用/落库失败
+     * @Desc 连接关闭不应把会话标成 FAILED，也不应落库“AI model call failed”这类误导性错误。
+     */
+    private boolean isConnectionClosed(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof ResponseStatusException responseStatusException
+                    && "SSE connection closed".equals(responseStatusException.getReason())) {
+                return true;
+            }
+            if (current instanceof IOException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     /**
@@ -337,7 +371,11 @@ public class ChatStreamingService {
         if (content == null || content.trim().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is empty");
         }
-        return content.trim();
+        String normalized = content.trim();
+        if (normalized.length() > MAX_QUESTION_CHARS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "content is too long");
+        }
+        return normalized;
     }
 
     /**

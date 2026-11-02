@@ -137,6 +137,7 @@ public interface ChatSessionRepository {
                     unread = false,
                     updated_at = now()
                 where id = #{id} and user_id = #{userId}
+                  and (status is distinct from 'GENERATING' or active_generation_id is null)
             """)
     int beginGeneration(
             @Param("id") Long id,
@@ -265,6 +266,22 @@ public interface ChatSessionRepository {
                 where id = #{id} and user_id = #{userId}
             """)
     int markRead(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * @return 被重置的“陈旧生成中”会话数
+     * @Desc 后端崩溃/重启可能留下 status=GENERATING 的死会话，加上 beginGeneration 的并发守卫后，
+     * 这些会话会永远无法再发送。启动时把超过 10 分钟未更新的 GENERATING 会话置回 IDLE 兜底恢复。
+     */
+    @Update("""
+                update chat_sessions
+                set status = 'IDLE',
+                    last_error_message = null,
+                    active_generation_id = null,
+                    updated_at = now()
+                where status = 'GENERATING'
+                  and updated_at < now() - interval '10 minutes'
+            """)
+    int resetStaleGenerations();
 
     /**
      * @param id

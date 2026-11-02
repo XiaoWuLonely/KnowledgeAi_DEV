@@ -15,5 +15,7 @@ public class AiProperties {
     private String apiKey;
     private String model;
     private String embeddingModel;
+    private String embeddingBaseUrl;
+    private String embeddingApiKey;
     private Integer timeoutSeconds = 60;
 }

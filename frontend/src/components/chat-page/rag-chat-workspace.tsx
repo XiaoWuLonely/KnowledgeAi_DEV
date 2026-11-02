@@ -240,12 +240,12 @@ function getRetrievalModeLabel(mode?: string) {
     return "混合";
   }
 
-  if (normalizedMode === "SEMANTIC") {
-    return "语义";
-  }
-
   if (normalizedMode === "FULLTEXT") {
     return "全文";
+  }
+
+  if (normalizedMode === "MENTION") {
+    return "指定文档";
   }
 
   return mode || "检索";
@@ -383,6 +383,10 @@ function getChatErrorMessage(error: unknown) {
 
     if (status === 400) {
       return "请输入问题内容，并确认检索数量参数不少于 1。";
+    }
+
+    if (status === 409) {
+      return "该会话正在生成回答，请等待完成或先打断。";
     }
 
     if (status === 404) {
@@ -2575,7 +2579,6 @@ export function RagChatWorkspace({
             disabled={isLoadingSessions || isLoadingMessages}
             isSubmitting={isSending || isActiveSessionGenerating}
             submitLabel={isSending || isActiveSessionGenerating ? "打断" : "发送"}
-            showAttachmentButton={false}
             showContextControls={composerModelOptions.length > 0 || isLoadingModels}
             modelOptions={composerModelOptions}
             selectedModelId={selectedModelId}

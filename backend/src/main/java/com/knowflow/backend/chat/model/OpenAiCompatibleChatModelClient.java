@@ -1,13 +1,13 @@
 package com.knowflow.backend.chat.model;
 
 import com.knowflow.backend.config.AiProperties;
+import com.knowflow.backend.config.ModelRestClientFactory;
 import com.knowflow.backend.settings.entity.UserModelSettings;
 import com.knowflow.backend.settings.repository.UserModelSettingsRepository;
 import com.knowflow.backend.settings.security.ModelApiKeyCryptoService;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -38,13 +38,15 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
     private final UserModelSettingsRepository userModelSettingsRepository;
     private final ModelApiKeyCryptoService cryptoService;
     private final ObjectMapper objectMapper;
+    private final ModelRestClientFactory modelRestClientFactory;
 
 
-    public OpenAiCompatibleChatModelClient(AiProperties properties, UserModelSettingsRepository userModelSettingsRepository, ModelApiKeyCryptoService cryptoService, ObjectMapper objectMapper) {
+    public OpenAiCompatibleChatModelClient(AiProperties properties, UserModelSettingsRepository userModelSettingsRepository, ModelApiKeyCryptoService cryptoService, ObjectMapper objectMapper, ModelRestClientFactory modelRestClientFactory) {
         this.properties = properties;
         this.userModelSettingsRepository = userModelSettingsRepository;
         this.cryptoService = cryptoService;
         this.objectMapper = objectMapper;
+        this.modelRestClientFactory = modelRestClientFactory;
     }
 
     @Override
@@ -65,10 +67,8 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
         EffectiveModelConfig config = resolveConfig(userId, modelOverride);
         try {
             // 根据当前用户的模型配置创建客户端，避免多个用户之间串用 Base URL 或 API Key。
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(config.baseUrl())
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + config.apiKey())
-                    .build();
+            // 超时取自该用户保存的 timeoutSeconds，未保存时回退环境级默认值。
+            RestClient restClient = modelRestClientFactory.create(config.baseUrl(), config.apiKey(), config.timeoutSeconds());
 
             byte[] responseBody = restClient.post()
                     .uri("/chat/completions")
@@ -114,10 +114,7 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
     public void stream(Long userId, String prompt, double temperature, String modelOverride, Consumer<String> deltaConsumer) {
         EffectiveModelConfig config = resolveConfig(userId, modelOverride);
         try {
-            RestClient restClient = RestClient.builder()
-                    .baseUrl(config.baseUrl())
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + config.apiKey())
-                    .build();
+            RestClient restClient = modelRestClientFactory.create(config.baseUrl(), config.apiKey(), config.timeoutSeconds());
 
             restClient.post()
                     .uri("/chat/completions")
@@ -173,7 +170,8 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
             return java.util.Optional.of(new EffectiveModelConfig(
                     normalizeChatBaseUrl(settings.getBaseUrl()),
                     cryptoService.decrypt(settings.getEncryptedApiKey()),
-                    resolveModel(settings.getModel(), modelOverride)
+                    resolveModel(settings.getModel(), modelOverride),
+                    resolveTimeout(settings.getTimeoutSeconds())
             ));
         } catch (ResponseStatusException exception) {
             // 已保存的密文可能来自旧的 KNOWFLOW_MODEL_SECRET_KEY。解密失败时把该用户配置视为不可用，
@@ -202,7 +200,8 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
         return new EffectiveModelConfig(
                 normalizeChatBaseUrl(properties.getBaseUrl()),
                 properties.getApiKey().trim(),
-                resolveModel(properties.getModel(), modelOverride)
+                resolveModel(properties.getModel(), modelOverride),
+                resolveTimeout(properties.getTimeoutSeconds())
         );
     }
 
@@ -226,7 +225,8 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
      * @param value 用户保存或环境变量提供的模型服务地址
      * @return OpenAI-compatible 根地址，调用方会继续追加 /chat/completions
      * @Desc 这里是 Chat 调用前的防御性规范化。Settings 保存时已处理新数据，但旧数据或环境变量可能仍是完整接口地址；
-     * 规范化可以避免把 /chat/completions 再拼一次导致“发送后没有回答”。
+     * 规范化可以避免把 /chat/completions 再拼一次。与旧逻辑不同，这里不再强制 /v1 结尾：主机名后无路径时补 /v1，
+     * 非空路径和原始 query 原样保留，兼容 Azure / 自定义网关。
      */
     private String normalizeChatBaseUrl(String value) {
         if (!hasText(value)) {
@@ -242,16 +242,16 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
                 path = path.substring(0, path.length() - "/chat/completions".length());
             }
             path = trimTrailingSlash(path);
-            if (!path.endsWith("/v1")) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, MODEL_CONFIG_INCOMPLETE_MESSAGE);
+            if (path.isEmpty()) {
+                path = "/v1";
             }
             return new URI(
                     uri.getScheme() == null ? null : uri.getScheme().toLowerCase(),
-                    uri.getUserInfo(),
+                    null,
                     uri.getHost(),
                     uri.getPort(),
                     path,
-                    null,
+                    uri.getRawQuery(),
                     null
             ).toString();
         } catch (URISyntaxException exception) {
@@ -279,7 +279,20 @@ public class OpenAiCompatibleChatModelClient implements ChatModelClient {
         }
     }
 
-    private record EffectiveModelConfig(String baseUrl, String apiKey, String model) {
+    private record EffectiveModelConfig(String baseUrl, String apiKey, String model, int timeoutSeconds) {
+    }
+
+    /**
+     * @param configuredTimeout 用户保存的超时秒数，可能为空或 <=0
+     * @return 有效超时秒数；用户未配置时回退环境级 KNOWFLOW_AI_TIMEOUT_SECONDS，最后兜底 60 秒
+     */
+    private int resolveTimeout(Integer configuredTimeout) {
+        if (configuredTimeout != null && configuredTimeout > 0) {
+            return configuredTimeout;
+        }
+        return properties.getTimeoutSeconds() == null || properties.getTimeoutSeconds() <= 0
+                ? 60
+                : properties.getTimeoutSeconds();
     }
 
     private String parseStreamDelta(String line) {
